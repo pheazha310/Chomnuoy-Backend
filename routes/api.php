@@ -70,9 +70,3 @@ Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donati
 Route::get('campaigns/{campaign}/velocity', [CampaignController::class, 'velocity']);
 Route::apiResource('campaign_image', CampaignImageController::class);
 Route::apiResource('campaign_update', CampaignUpdateController::class);
-Route::post('/bakong/transactions', [AbaPayWayController::class, 'createTransaction']);
-Route::post('/bakong/transactions/{tranId}/verify', [AbaPayWayController::class, 'verify']);
-Route::match(['get', 'post'], '/bakong/callback', [AbaPayWayController::class, 'callback']);
-Route::post('/aba-payway/transactions', [AbaPayWayController::class, 'createTransaction']);
-Route::post('/aba-payway/transactions/{tranId}/verify', [AbaPayWayController::class, 'verify']);
-Route::match(['get', 'post'], '/aba-payway/callback', [AbaPayWayController::class, 'callback']);
