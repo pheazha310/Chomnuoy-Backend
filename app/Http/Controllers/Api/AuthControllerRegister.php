@@ -83,6 +83,8 @@ class AuthControllerRegister extends Controller
                     && empty($request->input('organization.category_id'))),
             ],
             'organization.location' => ['nullable', 'string', 'max:255'],
+            'organization.latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'organization.longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'organization.description' => ['nullable', 'string'],
         ]);
 
@@ -110,6 +112,8 @@ class AuthControllerRegister extends Controller
                     'password' => Hash::make($data['password']),
                     'category_id' => $categoryId,
                     'location' => $organizationData['location'] ?? null,
+                    'latitude' => $organizationData['latitude'] ?? null,
+                    'longitude' => $organizationData['longitude'] ?? null,
                     'description' => $organizationData['description'] ?? null,
                     'verified_status' => 'pending',
                 ]);

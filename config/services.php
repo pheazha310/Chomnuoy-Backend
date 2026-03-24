@@ -1,5 +1,37 @@
 <?php
 
+$abaEnvironment = strtolower((string) env('ABA_ENV', 'sandbox'));
+$abaDefaultBaseUrl = $abaEnvironment === 'production'
+    ? 'https://checkout.payway.com.kh'
+    : 'https://checkout-sandbox.payway.com.kh';
+
+$resolveAbaUrl = static function (string $envKey, string $path, ?string $fallback = null) use ($abaDefaultBaseUrl): string {
+    $rawValue = trim((string) env($envKey, ''));
+
+    if ($rawValue === '') {
+        $base = rtrim($fallback ?: $abaDefaultBaseUrl, '/');
+        return $base . $path;
+    }
+
+    if (preg_match('/^https?:\/\//i', $rawValue) === 1) {
+        return rtrim($rawValue, '/');
+    }
+
+    if (str_starts_with($rawValue, '/')) {
+        $base = rtrim($fallback ?: $abaDefaultBaseUrl, '/');
+        return $base . $rawValue;
+    }
+
+    $base = rtrim($fallback ?: $abaDefaultBaseUrl, '/');
+
+    return $base . '/' . ltrim($rawValue, '/');
+};
+
+$abaBaseUrl = rtrim(trim((string) env('ABA_BASE_URL', '')), '/');
+if ($abaBaseUrl === '') {
+    $abaBaseUrl = $abaDefaultBaseUrl;
+}
+
 return [
 
     /*
@@ -41,6 +73,66 @@ return [
         'client_id' => env('FACEBOOK_CLIENT_ID'),
         'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
         'redirect' => env('FACEBOOK_REDIRECT_URI'),
+    ],
+
+    'bakong' => [
+        'token' => env('BAKONG_TOKEN'),
+        'currency' => env('BAKONG_CURRENCY', 'USD'),
+        'static_qr_image' => env('BAKONG_STATIC_QR_IMAGE', env('ABA_STATIC_QR_IMAGE')),
+        'static_qr_string' => env('BAKONG_STATIC_QR_STRING', env('ABA_STATIC_QR_STRING')),
+        'static_qr_deeplink' => env('BAKONG_STATIC_QR_DEEPLINK', env('ABA_STATIC_QR_DEEPLINK')),
+        'static_qr_name' => env('BAKONG_STATIC_QR_NAME', env('ABA_STATIC_QR_NAME', 'Bakong KHQR')),
+    ],
+
+    'aba_payway' => [
+        'environment' => $abaEnvironment,
+        'base_url' => $abaBaseUrl,
+
+        // ✅ REQUIRED
+        'merchant_id' => env('ABA_MERCHANT_ID'),
+        'api_key' => env('ABA_API_KEY'), // 🔥 IMPORTANT (ADD THIS)
+
+        // ❌ NOT USED FOR HASH (optional)
+        'public_key' => env('ABA_PUBLIC_KEY'),
+
+        // ✅ API URLs
+        'purchase_url' => $resolveAbaUrl(
+            'ABA_API_URL',
+            '/api/payment-gateway/v1/payments/purchase',
+            $abaBaseUrl
+        ),
+
+        'generate_qr_url' => $resolveAbaUrl(
+            'ABA_GENERATE_QR_URL',
+            '/api/payment-gateway/v1/payments/generate-qr',
+            $abaBaseUrl
+        ),
+
+        'check_transaction_url' => $resolveAbaUrl(
+            'ABA_CHECK_TRANSACTION_URL',
+            '/api/payment-gateway/v1/payments/check-transaction',
+            $abaBaseUrl // ✅ FIX (remove -2)
+        ),
+
+        'transaction_detail_url' => $resolveAbaUrl(
+            'ABA_TRANSACTION_DETAIL_URL',
+            '/api/payment-gateway/v1/payments/transaction-detail',
+            $abaBaseUrl
+        ),
+
+        // ✅ DEFAULT SETTINGS
+        'payment_option' => env('ABA_PAYMENT_OPTION', 'abapay_khqr'),
+        'currency' => env('ABA_CURRENCY', 'USD'),
+
+        // ✅ URLS
+        'return_url' => env('ABA_RETURN_URL'),
+        'callback_url' => env('ABA_CALLBACK_URL'),
+        'cancel_url' => env('ABA_CANCEL_URL'),
+        'continue_success_url' => env('ABA_CONTINUE_SUCCESS_URL'),
+        'static_qr_image' => env('ABA_STATIC_QR_IMAGE'),
+        'static_qr_string' => env('ABA_STATIC_QR_STRING'),
+        'static_qr_deeplink' => env('ABA_STATIC_QR_DEEPLINK'),
+        'static_qr_name' => env('ABA_STATIC_QR_NAME', 'Bakong KHQR'),
     ],
 
 ];

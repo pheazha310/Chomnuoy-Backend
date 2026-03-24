@@ -18,6 +18,8 @@ class Organization extends Model
         'password',
         'category_id',
         'location',
+        'latitude',
+        'longitude',
         'description',
         'verified_status',
         'avatar_path',
