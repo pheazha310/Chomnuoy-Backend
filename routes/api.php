@@ -70,3 +70,11 @@ Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donati
 Route::get('campaigns/{campaign}/velocity', [CampaignController::class, 'velocity']);
 Route::apiResource('campaign_image', CampaignImageController::class);
 Route::apiResource('campaign_update', CampaignUpdateController::class);
+
+
+Route::post('/payment/generate', [PaymentController::class, 'generateQR']);
+Route::post('/payment/check', [PaymentController::class, 'checkPayment']);
+Route::post('/payment/status', [PaymentController::class, 'getPaymentStatus']);
+Route::post('/payment/verify', [PaymentController::class, 'verifyQR']);
+Route::post('/payment/decode', [PaymentController::class, 'decodeQR']);
+Route::post('/payment/deep-link', [PaymentController::class, 'generateDeepLink']);
