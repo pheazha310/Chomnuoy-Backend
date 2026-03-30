@@ -116,6 +116,7 @@ Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donati
 Route::get('campaigns/{campaign}/velocity', [CampaignController::class, 'velocity']);
 Route::apiResource('campaign_image', CampaignImageController::class);
 Route::apiResource('campaign_update', CampaignUpdateController::class);
+<<<<<<< HEAD
 Route::post('bakong/transactions', [BakongTransactionController::class, 'store']);
 Route::post('bakong/transactions/{tranId}/verify', [BakongTransactionController::class, 'verify']);
 
@@ -138,3 +139,8 @@ Route::get('admin/settings/{key}', [AdminSettingsController::class, 'show']);
 Route::post('admin/settings', [AdminSettingsController::class, 'store']);
 Route::put('admin/settings/{key}', [AdminSettingsController::class, 'update']);
 Route::delete('admin/settings/{key}', [AdminSettingsController::class, 'destroy']);
+=======
+
+
+Route::post('/payment/generate', [PaymentController::class, 'generateQR']);
+>>>>>>> 209712417a9ee03df73d1b2634269850c2e940ac
