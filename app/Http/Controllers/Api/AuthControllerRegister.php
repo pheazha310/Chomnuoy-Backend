@@ -206,6 +206,17 @@ class AuthControllerRegister extends Controller
                 ->value('role_name') ?? 'Donor';
             $user->last_seen_at = now();
             $user->save();
+            if (strtolower($roleName) === 'admin') {
+                $auditPayload = [
+                    'user_id' => $user->id,
+                    'action' => 'Admin login',
+                    'affected_table' => 'users',
+                ];
+                if (Schema::hasColumn('audit_logs', 'ip_address')) {
+                    $auditPayload['ip_address'] = $request->ip();
+                }
+                AuditLog::create($auditPayload);
+            }
             Log::info('Auth login success', [
                 'email' => $email,
                 'account_type' => $roleName,

@@ -5,6 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\CampaignImage;
+use App\Models\Notification;
+use App\Models\Organization;
+use App\Models\Role;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +17,103 @@ use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
 {
+    private function notifyDonorsAboutCampaign(Campaign $campaign, string $action = 'published'): void
+    {
+        $status = strtolower((string) ($campaign->status ?? ''));
+        if ($status !== 'active') {
+            return;
+        }
+
+        $donorRoleId = Role::query()->where('role_name', 'Donor')->value('id');
+        if (!$donorRoleId) {
+            return;
+        }
+
+        $organizationName = DB::table('organizations')
+            ->where('id', $campaign->organization_id)
+            ->value('name') ?? 'An organization';
+
+        $message = $action === 'updated'
+            ? sprintf('%s updated the campaign "%s".', $organizationName, $campaign->title)
+            : sprintf('%s posted a new campaign: "%s".', $organizationName, $campaign->title);
+
+        $donorIds = User::query()
+            ->where('role_id', $donorRoleId)
+            ->pluck('id');
+
+        foreach ($donorIds as $donorId) {
+            Notification::create([
+                'user_id' => (int) $donorId,
+                'sender_type' => 'organization',
+                'sender_name' => $organizationName,
+                'recipient_type' => 'user',
+                'recipient_id' => $donorId,
+                'message' => $message,
+                'type' => 'campaign',
+                'is_read' => false,
+            ]);
+        }
+    }
+
+    private function notifyCampaignPublished(Campaign $campaign): void
+    {
+        $title = trim((string) ($campaign->title ?? 'Untitled Campaign'));
+        $organizationId = (int) ($campaign->organization_id ?? 0);
+        $organizationName = 'Organization';
+
+        if ($organizationId > 0) {
+            $organizationName = Organization::query()
+                ->where('id', $organizationId)
+                ->value('name') ?? 'Organization';
+        }
+
+        $message = sprintf('New campaign published: %s', $title);
+
+        if ($organizationId > 0) {
+            Notification::create([
+                'user_id' => $organizationId,
+                'sender_type' => 'organization',
+                'sender_name' => $organizationName,
+                'recipient_type' => 'organization',
+                'recipient_id' => $organizationId,
+                'message' => $message,
+                'type' => 'campaign',
+                'is_read' => false,
+            ]);
+        }
+
+        Notification::create([
+            'user_id' => $organizationId > 0 ? $organizationId : 1,
+            'sender_type' => 'organization',
+            'sender_name' => $organizationName,
+            'recipient_type' => 'admin',
+            'message' => $message,
+            'type' => 'campaign',
+            'is_read' => false,
+        ]);
+
+        $donorIds = User::query()
+            ->join('roles', 'roles.id', '=', 'users.role_id')
+            ->whereRaw('LOWER(roles.role_name) = ?', ['donor'])
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        foreach ($donorIds as $donorId) {
+            Notification::create([
+                'user_id' => $donorId,
+                'sender_type' => 'organization',
+                'sender_name' => $organizationName,
+                'recipient_type' => 'user',
+                'recipient_id' => $donorId,
+                'message' => $message,
+                'type' => 'campaign',
+                'is_read' => false,
+            ]);
+        }
+    }
+
     private function preparePayload(Request $request): array
     {
         $columns = Schema::getColumnListing('campaigns');
@@ -40,7 +141,14 @@ class CampaignController extends Controller
     public function index(): JsonResponse
     {
         $records = Campaign::query()
-            ->select('campaigns.*')
+            ->leftJoin('organizations', 'organizations.id', '=', 'campaigns.organization_id')
+            ->select(
+                'campaigns.*',
+                'organizations.name as organization_name',
+                'organizations.location as organization_location',
+                'organizations.latitude as organization_latitude',
+                'organizations.longitude as organization_longitude'
+            )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')
@@ -57,6 +165,11 @@ class CampaignController extends Controller
     {
         $payload = $this->preparePayload($request);
         $record = Campaign::create($payload);
+        $this->notifyDonorsAboutCampaign($record, 'published');
+
+        if (strtolower((string) ($record->status ?? '')) === 'active') {
+            $this->notifyCampaignPublished($record);
+        }
 
         return response()->json($record, 201);
     }
@@ -64,7 +177,14 @@ class CampaignController extends Controller
     public function show(int $id): JsonResponse
     {
         $record = Campaign::query()
-            ->select('campaigns.*')
+            ->leftJoin('organizations', 'organizations.id', '=', 'campaigns.organization_id')
+            ->select(
+                'campaigns.*',
+                'organizations.name as organization_name',
+                'organizations.location as organization_location',
+                'organizations.latitude as organization_latitude',
+                'organizations.longitude as organization_longitude'
+            )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')
@@ -78,8 +198,19 @@ class CampaignController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $record = Campaign::findOrFail($id);
+        $wasActive = strtolower((string) ($record->status ?? '')) === 'active';
         $payload = $this->preparePayload($request);
         $record->update($payload);
+        $record->refresh();
+
+        if (!$wasActive && strtolower((string) ($record->status ?? '')) === 'active') {
+            $this->notifyDonorsAboutCampaign($record, 'published');
+        }
+
+        $isActive = strtolower((string) ($record->status ?? '')) === 'active';
+        if (!$wasActive && $isActive) {
+            $this->notifyCampaignPublished($record);
+        }
 
         return response()->json($record);
     }
