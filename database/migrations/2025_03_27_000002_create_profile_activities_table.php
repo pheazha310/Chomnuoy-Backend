@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('users') || Schema::hasTable('profile_activities')) {
+            return;
+        }
+
         Schema::create('profile_activities', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
@@ -23,6 +27,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('profile_activities');
+        if (Schema::hasTable('profile_activities')) {
+            Schema::drop('profile_activities');
+        }
     }
 };
