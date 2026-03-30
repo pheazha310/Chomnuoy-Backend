@@ -1,0 +1,17 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class CampaignUpdate extends Model
+{
+    use HasFactory;
+
+    protected $table = 'campaign_update';
+
+    protected $guarded = [];
+
+    public $timestamps = false;
+}
