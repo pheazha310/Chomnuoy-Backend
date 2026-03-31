@@ -12,6 +12,7 @@ use App\Models\Notification;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Models\Role;
+use Illuminate\Support\Facades\Schema;
 
 class PaymentController extends Controller
 {
@@ -154,13 +155,9 @@ class PaymentController extends Controller
                 'method_name' => 'Bakong KHQR',
             ]);
 
-            // Save payment to database
-            $payment = Payment::create([
+            // Older databases may not yet have all payment linkage columns.
+            $paymentData = [
                 'user_id' => $validated['user_id'] ?? null,
-                'donation_id' => null,
-                'payment_method_id' => $paymentMethod->id,
-                'transaction_reference' => $validated['bill_number'] ?? null,
-                'payment_status' => 'pending',
                 'md5' => $result['data']['md5'],
                 'qr_code' => $result['data']['qr'],
                 'amount' => $validated['amount'],
@@ -171,7 +168,25 @@ class PaymentController extends Controller
                 'terminal_label' => $validated['terminal_label'] ?? null,
                 'merchant_name' => config('services.bakong.merchant.name'),
                 'expires_at' => now()->addMinutes(self::PAYMENT_EXPIRY_MINUTES),
-            ]);
+            ];
+
+            if (Schema::hasColumn('payments', 'donation_id')) {
+                $paymentData['donation_id'] = null;
+            }
+
+            if (Schema::hasColumn('payments', 'payment_method_id')) {
+                $paymentData['payment_method_id'] = $paymentMethod->id;
+            }
+
+            if (Schema::hasColumn('payments', 'transaction_reference')) {
+                $paymentData['transaction_reference'] = $validated['bill_number'] ?? null;
+            }
+
+            if (Schema::hasColumn('payments', 'payment_status')) {
+                $paymentData['payment_status'] = 'pending';
+            }
+
+            $payment = Payment::create($paymentData);
 
             Log::info('Payment created', [
                 'payment_id' => $payment->id,

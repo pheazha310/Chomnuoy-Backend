@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\Role;
 use App\Models\User;
+use Firebase\JWT\JWK;
+use Firebase\JWT\JWT;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
@@ -52,7 +56,9 @@ class SocialAuthController extends Controller
         ]);
 
         try {
-            $socialUser = Socialite::driver($provider)->stateless()->userFromToken($validated['credential']);
+            $socialUser = $provider === 'google'
+                ? $this->userFromGoogleCredential($validated['credential'])
+                : Socialite::driver($provider)->stateless()->userFromToken($validated['credential']);
             return response()->json($this->buildSocialLoginPayload($socialUser));
         } catch (\Throwable $e) {
             Log::error('Social token login failed', [
@@ -157,5 +163,82 @@ class SocialAuthController extends Controller
         $frontend = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
         
         return redirect("{$frontend}/oauth/callback?error=" . urlencode($message));
+    }
+
+    protected function userFromGoogleCredential(string $credential): object
+    {
+        if ($this->isJwtToken($credential)) {
+            return $this->mapGoogleUserFromIdToken($credential);
+        }
+
+        return Socialite::driver('google')->stateless()->userFromToken($credential);
+    }
+
+    protected function mapGoogleUserFromIdToken(string $idToken): object
+    {
+        try {
+            $user = (array) JWT::decode(
+                $idToken,
+                JWK::parseKeySet($this->getGoogleJwks())
+            );
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Failed to verify Google JWT token: '.$e->getMessage(), previous: $e);
+        }
+
+        $issuer = (string) ($user['iss'] ?? '');
+        if (!in_array($issuer, ['https://accounts.google.com', 'accounts.google.com'], true)) {
+            throw new \RuntimeException('Failed to verify Google JWT token: Invalid ID token issuer.');
+        }
+
+        $audience = (string) ($user['aud'] ?? '');
+        if (!in_array($audience, $this->googleClientIds(), true)) {
+            throw new \RuntimeException('Failed to verify Google JWT token: Invalid ID token audience.');
+        }
+
+        return new class($user)
+        {
+            public function __construct(private readonly array $user)
+            {
+            }
+
+            public function getEmail(): ?string
+            {
+                return Arr::get($this->user, 'email');
+            }
+
+            public function getName(): ?string
+            {
+                return Arr::get($this->user, 'name');
+            }
+
+            public function getAvatar(): ?string
+            {
+                return Arr::get($this->user, 'picture');
+            }
+        };
+    }
+
+    protected function getGoogleJwks(): array
+    {
+        return Http::timeout(10)
+            ->acceptJson()
+            ->get('https://www.googleapis.com/oauth2/v3/certs')
+            ->throw()
+            ->json();
+    }
+
+    protected function googleClientIds(): array
+    {
+        $values = array_merge(
+            [(string) env('GOOGLE_CLIENT_ID', '')],
+            preg_split('/[\s,]+/', (string) env('GOOGLE_CLIENT_IDS', ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+        );
+
+        return array_values(array_unique(array_filter(array_map('trim', $values))));
+    }
+
+    protected function isJwtToken(string $token): bool
+    {
+        return substr_count($token, '.') === 2 && strlen($token) > 100;
     }
 }
