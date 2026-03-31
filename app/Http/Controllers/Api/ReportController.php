@@ -195,7 +195,6 @@ class ReportController extends Controller
 
         if ($days === 30) {
             $cursor = $start->copy()->startOfMonth();
-            $seriesStart = $cursor->copy();
             $seriesEnd = $end->copy()->endOfMonth();
             while ($cursor->lte($seriesEnd)) {
                 $monthStart = $cursor->copy()->startOfMonth();

@@ -1704,12 +1704,11 @@ class LazyCollection implements CanBeEscapedWhenCastToString, Enumerable
     /**
      * Flatten a multi-dimensional associative array with dots.
      *
-     * @param  int  $depth
      * @return static
      */
-    public function dot($depth = INF)
+    public function dot()
     {
-        return $this->passthru(__FUNCTION__, [$depth]);
+        return $this->passthru(__FUNCTION__, []);
     }
 
     /**

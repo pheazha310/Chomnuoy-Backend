@@ -137,6 +137,7 @@ class BusFake implements Fake, QueueingDispatcher
      * Assert if a job was pushed exactly once.
      *
      * @param  string|\Closure  $command
+     * @param  int  $times
      * @return void
      */
     public function assertDispatchedOnce($command)

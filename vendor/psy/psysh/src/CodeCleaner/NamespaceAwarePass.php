@@ -29,7 +29,6 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
     protected array $namespace = [];
     protected array $currentScope = [];
     protected array $aliases = [];
-    protected array $aliasesByType = [];
     protected ?CodeCleaner $cleaner = null;
 
     /**
@@ -52,7 +51,6 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
     {
         $this->namespace = [];
         $this->currentScope = [];
-        $this->aliasesByType = [];
 
         return null;
     }
@@ -73,25 +71,23 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
             // Only restore use statement aliases for PsySH re-injected namespaces.
             // Explicit namespace declarations start with a clean slate.
             if ($this->cleaner && $node->getAttribute('psyshReinjected')) {
-                $this->aliasesByType = $this->cleaner->getAliasesByTypeForNamespace($node->name);
-                $this->aliases = $this->aliasesByType[Use_::TYPE_NORMAL] ?? [];
+                $this->aliases = $this->cleaner->getAliasesForNamespace($node->name);
             } else {
                 $this->aliases = [];
-                $this->aliasesByType = [];
             }
         }
 
         // Track use statements for alias resolution
         if ($node instanceof Use_) {
             foreach ($node->uses as $useItem) {
-                $this->setAliasForType(\strtolower($useItem->getAlias()), $useItem->name, $this->getUseImportType($node, $useItem));
+                $this->aliases[\strtolower($useItem->getAlias())] = $useItem->name;
             }
         }
 
         // Track group use statements
         if ($node instanceof GroupUse) {
             foreach ($node->uses as $useItem) {
-                $this->setAliasForType(\strtolower($useItem->getAlias()), Name::concat($node->prefix, $useItem->name), $this->getUseImportType($node, $useItem));
+                $this->aliases[\strtolower($useItem->getAlias())] = Name::concat($node->prefix, $useItem->name);
             }
         }
 
@@ -112,17 +108,14 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
     public function leaveNode(Node $node)
     {
         if ($node instanceof Namespace_) {
-            $this->syncCompatAliases();
-
             // Open namespaces (like `namespace Foo;`) have kind == KIND_SEMICOLON.
             if ($node->getAttribute('kind') === Namespace_::KIND_SEMICOLON || $node->getAttribute('psyshReinjected')) {
                 if ($this->cleaner) {
-                    $this->cleaner->setAliasesByTypeForNamespace($node->name, $this->aliasesByType);
+                    $this->cleaner->setAliasesForNamespace($node->name, $this->aliases);
                 }
             }
 
             $this->aliases = [];
-            $this->aliasesByType = [];
         }
 
         return null;
@@ -137,8 +130,6 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
      */
     protected function getFullyQualifiedName($name): string
     {
-        $this->syncCompatAliases();
-
         if ($name instanceof FullyQualifiedName) {
             return \implode('\\', $this->getParts($name));
         }
@@ -174,55 +165,5 @@ abstract class NamespaceAwarePass extends CodeCleanerPass
     protected function getParts(Name $name): array
     {
         return \method_exists($name, 'getParts') ? $name->getParts() : $name->parts;
-    }
-
-    protected function getAliasesForType(int $type): array
-    {
-        $this->syncCompatAliases();
-
-        return $this->aliasesByType[$type] ?? [];
-    }
-
-    private function setAliasForType(string $alias, Name $name, int $type): void
-    {
-        $this->aliasesByType[$type][$alias] = $name;
-        if ($type === Use_::TYPE_NORMAL) {
-            $this->aliases[$alias] = $name;
-        }
-    }
-
-    /**
-     * Sync $aliases into $aliasesByType[TYPE_NORMAL] for subclasses that read $aliases directly.
-     */
-    private function syncCompatAliases(): void
-    {
-        if ($this->aliases === []) {
-            unset($this->aliasesByType[Use_::TYPE_NORMAL]);
-
-            return;
-        }
-
-        $this->aliasesByType[Use_::TYPE_NORMAL] = $this->aliases;
-    }
-
-    /**
-     * Resolve the import type for a use item across PHP-Parser 4.x and 5.x.
-     *
-     * Individual use items may specify their own type (e.g. in group use
-     * statements), otherwise fall back to the parent statement type.
-     */
-    protected function getUseImportType(Node $node, Node $useItem): int
-    {
-        $itemType = $useItem->type ?? null;
-        if (\is_int($itemType) && $itemType !== Use_::TYPE_UNKNOWN) {
-            return $itemType;
-        }
-
-        $nodeType = $node->type ?? null;
-        if (\is_int($nodeType) && $nodeType !== Use_::TYPE_UNKNOWN) {
-            return $nodeType;
-        }
-
-        return Use_::TYPE_NORMAL;
     }
 }

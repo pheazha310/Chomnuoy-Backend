@@ -129,6 +129,8 @@ class SudoVisitor extends NodeVisitorAbstract
 
     private function prepareCall(string $method, array $args): StaticCall
     {
-        return new StaticCall(new FullyQualifiedName(Sudo::class), $method, \array_map(fn ($arg) => new Arg($arg), $args));
+        return new StaticCall(new FullyQualifiedName(Sudo::class), $method, \array_map(function ($arg) {
+            return new Arg($arg);
+        }, $args));
     }
 }

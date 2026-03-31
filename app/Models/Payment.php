@@ -4,12 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 
 class Payment extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
+        'donation_id',
+        'payment_method_id',
+        'transaction_reference',
+        'payment_status',
         'md5',
         'qr_code',
         'amount',
@@ -24,7 +30,6 @@ class Payment extends Model
         'transaction_id',
         'expires_at',
         'paid_at',
-        'telegram_sent',
         'check_attempts',
         'last_checked_at',
     ];
@@ -35,8 +40,12 @@ class Payment extends Model
         'expires_at' => 'datetime',
         'paid_at' => 'datetime',
         'last_checked_at' => 'datetime',
-        'telegram_sent' => 'boolean',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function isPending(): bool
     {
@@ -67,10 +76,5 @@ class Payment extends Model
     {
         $this->increment('check_attempts');
         $this->update(['last_checked_at' => now()]);
-    }
-
-    public function markTelegramSent(): void
-    {
-        $this->update(['telegram_sent' => true]);
     }
 }

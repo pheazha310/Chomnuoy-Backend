@@ -13,7 +13,6 @@ namespace Symfony\Component\Console\Helper;
 
 use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Exception\LogicException;
-use Symfony\Component\Console\Output\ConsoleSectionOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
@@ -150,9 +149,7 @@ class ProgressIndicator
         $this->finished = true;
         $this->message = $message;
         $this->display();
-        if (!$this->output instanceof ConsoleSectionOutput) {
-            $this->output->writeln('');
-        }
+        $this->output->writeln('');
         $this->started = false;
     }
 
@@ -217,9 +214,7 @@ class ProgressIndicator
      */
     private function overwrite(string $message): void
     {
-        if ($this->output instanceof ConsoleSectionOutput) {
-            $this->output->overwrite($message);
-        } elseif ($this->output->isDecorated()) {
+        if ($this->output->isDecorated()) {
             $this->output->write("\x0D\x1B[2K");
             $this->output->write($message);
         } else {

@@ -151,6 +151,7 @@ class EventFake implements Dispatcher, Fake
      * Assert if an event was dispatched exactly once.
      *
      * @param  string  $event
+     * @param  int  $times
      * @return void
      */
     public function assertDispatchedOnce($event)

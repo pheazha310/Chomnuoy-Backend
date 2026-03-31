@@ -153,7 +153,6 @@ export SAIL_SHARE_SERVER_PORT=${SAIL_SHARE_SERVER_PORT:-8080}
 export SAIL_SHARE_SUBDOMAIN=${SAIL_SHARE_SUBDOMAIN:-""}
 export SAIL_SHARE_DOMAIN=${SAIL_SHARE_DOMAIN:-"$SAIL_SHARE_SERVER_HOST"}
 export SAIL_SHARE_SERVER=${SAIL_SHARE_SERVER:-""}
-export SAIL_DOCKER_BINARY=${SAIL_DOCKER_BINARY:-"docker"}
 
 # Function that outputs Sail is not running...
 function sail_is_not_running {
@@ -165,10 +164,10 @@ function sail_is_not_running {
 }
 
 # Define Docker Compose command prefix...
-if ${SAIL_DOCKER_BINARY} compose &> /dev/null; then
-    COMPOSE_CMD=(${SAIL_DOCKER_BINARY} compose)
+if docker compose &> /dev/null; then
+    DOCKER_COMPOSE=(docker compose)
 else
-    COMPOSE_CMD=(${SAIL_DOCKER_BINARY}-compose)
+    DOCKER_COMPOSE=(docker-compose)
 fi
 
 if [ -n "$SAIL_FILES" ]; then
@@ -177,7 +176,7 @@ if [ -n "$SAIL_FILES" ]; then
 
     for FILE in "${SAIL_FILES[@]}"; do
         if [ -f "$FILE" ]; then
-            COMPOSE_CMD+=(-f "$FILE")
+            DOCKER_COMPOSE+=(-f "$FILE")
         else
             echo "${BOLD}Unable to find Docker Compose file: '${FILE}'${NC}" >&2
 
@@ -190,20 +189,20 @@ EXEC="yes"
 
 if [ -z "$SAIL_SKIP_CHECKS" ]; then
     # Ensure that Docker is running...
-    if ! ${SAIL_DOCKER_BINARY} info > /dev/null 2>&1; then
-        echo "${BOLD}Docker or Podman is not running.${NC}" >&2
+    if ! docker info > /dev/null 2>&1; then
+        echo "${BOLD}Docker is not running.${NC}" >&2
 
         exit 1
     fi
 
     # Determine if Sail is currently up...
-    if "${COMPOSE_CMD[@]}" ps "$APP_SERVICE" 2>&1 | grep 'Exit\|exited'; then
+    if "${DOCKER_COMPOSE[@]}" ps "$APP_SERVICE" 2>&1 | grep 'Exit\|exited'; then
         echo "${BOLD}Shutting down old Sail processes...${NC}" >&2
 
-        "${COMPOSE_CMD[@]}" down > /dev/null 2>&1
+        "${DOCKER_COMPOSE[@]}" down > /dev/null 2>&1
 
         EXEC="no"
-    elif [ -z "$("${COMPOSE_CMD[@]}" ps -q)" ]; then
+    elif [ -z "$("${DOCKER_COMPOSE[@]}" ps -q)" ]; then
         EXEC="no"
     fi
 fi
@@ -257,7 +256,7 @@ elif [ "$1" == "docker-compose" ]; then
     if [ "$EXEC" == "yes" ]; then
         ARGS+=(exec -u "$APP_USER")
         [ ! -t 0 ] && ARGS+=(-T)
-        ARGS+=("$APP_SERVICE" "${COMPOSE_CMD[@]}")
+        ARGS+=("$APP_SERVICE" "${DOCKER_COMPOSE[@]}")
     else
         sail_is_not_running
     fi
@@ -586,7 +585,7 @@ elif [ "$1" == "share" ]; then
     shift 1
 
     if [ "$EXEC" == "yes" ]; then
-        ${SAIL_DOCKER_BINARY} run --init --rm --add-host=host.docker.internal:host-gateway -p "$SAIL_SHARE_DASHBOARD":4040 -t beyondcodegmbh/expose-server:latest share http://host.docker.internal:"$APP_PORT" \
+        docker run --init --rm --add-host=host.docker.internal:host-gateway -p "$SAIL_SHARE_DASHBOARD":4040 -t beyondcodegmbh/expose-server:latest share http://host.docker.internal:"$APP_PORT" \
             --server-host="$SAIL_SHARE_SERVER_HOST" \
             --server-port="$SAIL_SHARE_SERVER_PORT" \
             --auth="$SAIL_SHARE_TOKEN" \
@@ -630,4 +629,4 @@ elif [ "$1" == "open" ]; then
 fi
 
 # Run Docker Compose with the defined arguments...
-"${COMPOSE_CMD[@]}" "${ARGS[@]}" "$@"
+"${DOCKER_COMPOSE[@]}" "${ARGS[@]}" "$@"

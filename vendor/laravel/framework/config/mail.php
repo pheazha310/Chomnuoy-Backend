@@ -132,10 +132,6 @@ return [
         'paths' => [
             resource_path('views/vendor/mail'),
         ],
-
-        'extensions' => [
-            // \League\CommonMark\Extension\Strikethrough\StrikethroughExtension::class,
-        ],
     ],
 
 ];

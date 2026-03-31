@@ -43,13 +43,6 @@ class Markdown
     protected static $withSecuredEncoding = false;
 
     /**
-     * The registered CommonMark extensions.
-     *
-     * @var array<int, class-string<\League\CommonMark\Extension\ExtensionInterface>>
-     */
-    protected static $extensions = [];
-
-    /**
      * Create a new Markdown renderer instance.
      *
      * @param  \Illuminate\Contracts\View\Factory  $view
@@ -60,8 +53,6 @@ class Markdown
         $this->view = $view;
         $this->theme = $options['theme'] ?? 'default';
         $this->loadComponentsFrom($options['paths'] ?? []);
-
-        static::$extensions = $options['extensions'] ?? [];
     }
 
     /**
@@ -197,10 +188,6 @@ class Markdown
         $environment->addExtension(new CommonMarkCoreExtension);
         $environment->addExtension(new TableExtension);
 
-        foreach (static::$extensions as $extensionClass) {
-            $environment->addExtension(new $extensionClass);
-        }
-
         return new MarkdownConverter($environment);
     }
 
@@ -302,6 +289,5 @@ class Markdown
     public static function flushState()
     {
         static::$withSecuredEncoding = false;
-        static::$extensions = [];
     }
 }

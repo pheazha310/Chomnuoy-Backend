@@ -23,15 +23,6 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('title')->nullable();
-            $table->text('bio')->nullable();
-            $table->string('location')->nullable();
-            $table->string('website')->nullable();
-            $table->string('linkedin_url')->nullable();
-            $table->json('skills')->nullable();
-            $table->integer('connections_count')->default(0);
-            $table->integer('project_reviews_count')->default(0);
-            $table->string('network_rank')->nullable();
             $table->string('phone', 30)->nullable();
             $table->string('email')->unique();
             $table->string('password');
@@ -42,18 +33,6 @@ return new class extends Migration
                 ->constrained('roles')
                 ->onDelete('cascade');
 
-            $table->timestamps();
-        });
-
-        Schema::create('profile_activities', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->string('type');
-            $table->string('title');
-            $table->text('description')->nullable();
-            $table->string('icon')->nullable();
-            $table->string('status')->nullable();
-            $table->timestamp('occurred_at');
             $table->timestamps();
         });
 
@@ -257,7 +236,6 @@ return new class extends Migration
         Schema::dropIfExists('organization_verifications');
         Schema::dropIfExists('user_history');
         Schema::dropIfExists('user_credentials');
-        Schema::dropIfExists('profile_activities');
         Schema::dropIfExists('user_roles');
         Schema::dropIfExists('campaigns');
         Schema::dropIfExists('organizations');

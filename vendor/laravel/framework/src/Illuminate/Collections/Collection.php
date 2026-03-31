@@ -1808,12 +1808,11 @@ class Collection implements ArrayAccess, CanBeEscapedWhenCastToString, Enumerabl
     /**
      * Flatten a multi-dimensional associative array with dots.
      *
-     * @param  int  $depth
      * @return static
      */
-    public function dot($depth = INF)
+    public function dot()
     {
-        return new static(Arr::dot($this->all(), '', $depth));
+        return new static(Arr::dot($this->all()));
     }
 
     /**

@@ -25,11 +25,6 @@ class Organization extends Model
         'avatar_path',
     ];
 
-    protected $casts = [
-        'latitude' => 'decimal:6',
-        'longitude' => 'decimal:6',
-    ];
-
     protected $hidden = ['password'];
     protected $appends = ['avatar_url'];
     public const UPDATED_AT = null;

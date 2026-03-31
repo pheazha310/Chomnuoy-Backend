@@ -243,7 +243,7 @@ class MessageBag implements Jsonable, JsonSerializable, MessageBagContract, Mess
         $all = [];
 
         foreach ($this->messages as $key => $messages) {
-            array_push($all, ...$this->transform($messages, $format, $key));
+            $all = array_merge($all, $this->transform($messages, $format, $key));
         }
 
         return $all;

@@ -1298,7 +1298,7 @@ class Builder implements BuilderContract
     /**
      * Update the column's update timestamp.
      *
-     * @param  array|string|null  $column
+     * @param  string|null  $column
      * @return int|false
      */
     public function touch($column = null)
@@ -1306,9 +1306,7 @@ class Builder implements BuilderContract
         $time = $this->model->freshTimestamp();
 
         if ($column) {
-            $columns = (new BaseCollection(Arr::wrap($column)))->mapWithKeys(fn ($column) => [$column => $time])->all();
-
-            return $this->toBase()->update($columns);
+            return $this->toBase()->update([$column => $time]);
         }
 
         $column = $this->model->getUpdatedAtColumn();

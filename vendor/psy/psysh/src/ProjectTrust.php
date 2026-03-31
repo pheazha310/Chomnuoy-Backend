@@ -13,7 +13,6 @@ namespace Psy;
 
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 
@@ -195,7 +194,7 @@ class ProjectTrust
      */
     public function warnTrustPersistenceFailed(string $root, OutputInterface $output): void
     {
-        if ($output instanceof ConsoleOutput) {
+        if ($output instanceof \Symfony\Component\Console\Output\ConsoleOutput) {
             $output = $output->getErrorOutput();
         }
 
@@ -215,7 +214,7 @@ class ProjectTrust
         }
 
         $this->warnedUntrustedAutoload = true;
-        if ($output instanceof ConsoleOutput) {
+        if ($output instanceof \Symfony\Component\Console\Output\ConsoleOutput) {
             $output = $output->getErrorOutput();
         }
 

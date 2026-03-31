@@ -114,10 +114,6 @@ class MorphTo extends BelongsTo
                 $morphTypeKey = $this->getDictionaryKey($model->{$this->morphType});
                 $foreignKeyKey = $this->getDictionaryKey($model->{$this->foreignKey});
 
-                if ($morphTypeKey === null || $foreignKeyKey === null) {
-                    continue;
-                }
-
                 if ($isAssociative) {
                     $this->dictionary[$morphTypeKey][$foreignKeyKey][$key] = $model;
                 } else {
@@ -228,7 +224,7 @@ class MorphTo extends BelongsTo
         foreach ($results as $result) {
             $ownerKey = ! is_null($this->ownerKey) ? $this->getDictionaryKey($result->{$this->ownerKey}) : $result->getKey();
 
-            if ($ownerKey !== null && isset($this->dictionary[$type][$ownerKey])) {
+            if (isset($this->dictionary[$type][$ownerKey])) {
                 foreach ($this->dictionary[$type][$ownerKey] as $model) {
                     $model->setRelation($this->relationName, $result);
                 }

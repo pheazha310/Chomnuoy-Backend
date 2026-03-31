@@ -91,9 +91,9 @@ HELP
 
         $exception = $this->context->getLastException();
         $count = $input->getOption('all') ? \PHP_INT_MAX : \max(3, \pow(2, \strlen($incredulity) + 1));
-        $shell = $this->getShell();
 
         $shellOutput->startPaging();
+
         do {
             $traceCount = \count($exception->getTrace());
             $showLines = $count;
@@ -105,23 +105,19 @@ HELP
             $trace = $this->getBacktrace($exception, $showLines);
             $moreLines = $traceCount - \count($trace);
 
-            $shell->writeExceptionHeader($output, $exception);
-            $shell->writeSeparator($output);
+            $output->writeln($this->getShell()->formatException($exception));
+            $output->writeln('--');
             $shellOutput->write($trace, true, ShellOutputAdapter::NUMBER_LINES);
+            $output->writeln('');
 
             if ($moreLines > 0) {
-                $shell->writeSpacer($output);
                 $output->writeln(\sprintf(
                     '<aside>Use <return>wtf -a</return> to see %d more lines</aside>',
                     $moreLines
                 ));
+                $output->writeln('');
             }
-
-            $previous = $exception->getPrevious();
-            if ($previous !== null) {
-                $shell->writeSpacer($output);
-            }
-        } while ($exception = $previous);
+        } while ($exception = $exception->getPrevious());
 
         $shellOutput->stopPaging();
 

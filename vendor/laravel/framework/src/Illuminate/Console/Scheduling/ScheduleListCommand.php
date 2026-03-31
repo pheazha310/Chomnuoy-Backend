@@ -79,7 +79,7 @@ class ScheduleListCommand extends Command
      */
     protected function displayJson(Collection $events, DateTimeZone $timezone)
     {
-        $this->output->writeln($events->flatMap(function ($event) use ($timezone) {
+        $this->output->writeln($events->map(function ($event) use ($timezone) {
             $nextDueDate = $this->getNextDueDateForEvent($event, $timezone);
 
             $command = $event->command ?? '';
@@ -96,8 +96,8 @@ class ScheduleListCommand extends Command
                 }
             }
 
-            return collect(CronExpressionTimezoneConverter::forEvent($event, $timezone))->map(fn ($expression) => [
-                'expression' => $expression,
+            return [
+                'expression' => $event->expression,
                 'command' => $command,
                 'description' => $event->description ?? null,
                 'next_due_date' => $nextDueDate->format('Y-m-d H:i:s P'),
@@ -106,7 +106,7 @@ class ScheduleListCommand extends Command
                 'has_mutex' => $event->mutex->exists($event),
                 'repeat_seconds' => $event->isRepeatable() ? $event->repeatSeconds : null,
                 'environments' => $event->environments,
-            ]);
+            ];
         })->values()->toJson());
     }
 
@@ -121,14 +121,12 @@ class ScheduleListCommand extends Command
     {
         $terminalWidth = self::getTerminalWidth();
 
-        $expressionSpacing = $this->getCronExpressionSpacing($events, $timezone);
+        $expressionSpacing = $this->getCronExpressionSpacing($events);
 
         $repeatExpressionSpacing = $this->getRepeatExpressionSpacing($events);
 
-        $events = $events->flatMap(function ($event) use ($terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone) {
-            return collect(CronExpressionTimezoneConverter::forEvent($event, $timezone))->map(
-                fn ($expression) => $this->listEvent($event, $terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone, $expression)
-            );
+        $events = $events->map(function ($event) use ($terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone) {
+            return $this->listEvent($event, $terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone);
         });
 
         $this->line(
@@ -142,10 +140,9 @@ class ScheduleListCommand extends Command
      * @param  \Illuminate\Support\Collection  $events
      * @return array<int, int>
      */
-    private function getCronExpressionSpacing($events, DateTimeZone $timezone)
+    private function getCronExpressionSpacing($events)
     {
-        $rows = $events->flatMap(fn ($event) => collect(CronExpressionTimezoneConverter::forEvent($event, $timezone))
-            ->map(fn ($expression) => array_map(mb_strlen(...), preg_split("/\s+/", $expression))));
+        $rows = $events->map(fn ($event) => array_map(mb_strlen(...), preg_split("/\s+/", $event->expression)));
 
         return (new Collection($rows[0] ?? []))->keys()->map(fn ($key) => $rows->max($key))->all();
     }
@@ -169,12 +166,11 @@ class ScheduleListCommand extends Command
      * @param  array  $expressionSpacing
      * @param  int  $repeatExpressionSpacing
      * @param  \DateTimeZone  $timezone
-     * @param  string|null  $convertedExpression
      * @return array
      */
-    private function listEvent($event, $terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone, $convertedExpression = null)
+    private function listEvent($event, $terminalWidth, $expressionSpacing, $repeatExpressionSpacing, $timezone)
     {
-        $expression = $this->formatCronExpression($convertedExpression ?? $event->expression, $expressionSpacing);
+        $expression = $this->formatCronExpression($event->expression, $expressionSpacing);
 
         $repeatExpression = str_pad($this->getRepeatExpression($event), $repeatExpressionSpacing);
 

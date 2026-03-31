@@ -169,12 +169,9 @@ HELP
         $this->lastException = $exception;
         $this->lastExceptionIndex = $index;
 
-        $shell = $this->getShell();
-
-        $shell->writeExceptionHeader($output, $exception);
-        $shell->writeSeparator($output);
+        $output->writeln($this->getShell()->formatException($exception));
+        $output->writeln('--');
         $this->writeTraceLine($output, $trace, $index);
-        $shell->writeSpacer($output);
         $this->writeTraceCodeSnippet($output, $trace, $index);
 
         $this->setCommandScopeVariablesFromContext($trace[$index]);

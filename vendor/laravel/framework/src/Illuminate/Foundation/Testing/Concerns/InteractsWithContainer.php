@@ -66,11 +66,9 @@ trait InteractsWithContainer
     /**
      * Mock an instance of an object in the container.
      *
-     * @template TInstance of object
-     *
-     * @param  class-string<TInstance>  $abstract
+     * @param  string  $abstract
      * @param  \Closure|null  $mock
-     * @return TInstance&\Mockery\MockInterface
+     * @return \Mockery\MockInterface
      */
     protected function mock($abstract, ?Closure $mock = null)
     {

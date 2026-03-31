@@ -159,7 +159,7 @@ class WithoutOverlapping
         }
 
         $jobName = method_exists($job, 'displayName')
-            ? hash('xxh128', $job->displayName())
+            ? $job->displayName()
             : get_class($job);
 
         return $this->prefix.$jobName.':'.$this->key;

@@ -145,17 +145,11 @@ trait ManagesFrequencies
     /**
      * Schedule the event to run multiple times per minute.
      *
-     * @param  int<1, 59>  $seconds
+     * @param  int<0, 59>  $seconds
      * @return $this
-     *
-     * @throws \InvalidArgumentException
      */
     protected function repeatEvery($seconds)
     {
-        if ($seconds <= 0) {
-            throw new InvalidArgumentException("The seconds [$seconds] must be greater than zero.");
-        }
-
         if (60 % $seconds !== 0) {
             throw new InvalidArgumentException("The seconds [$seconds] are not evenly divisible by 60.");
         }

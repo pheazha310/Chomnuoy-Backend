@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProfileActivity;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,10 +18,12 @@ class ProfileController extends Controller
      */
     public function show(User $user): JsonResponse
     {
-        $activities = ProfileActivity::where('user_id', $user->id)
-            ->orderByDesc('occurred_at')
-            ->limit(10)
-            ->get();
+        $activities = $this->profileActivityModel()
+            ? $this->profileActivityModel()::where('user_id', $user->id)
+                ->orderByDesc('occurred_at')
+                ->limit(10)
+                ->get()
+            : collect();
 
         return response()->json([
             'profile' => [
@@ -181,6 +182,11 @@ class ProfileController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
+        if (!$user instanceof User) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
         return $this->show($user);
     }
 
@@ -190,6 +196,11 @@ class ProfileController extends Controller
     public function updateMe(Request $request): JsonResponse
     {
         $user = $request->user();
+        if (!$user instanceof User) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
         return $this->update($request, $user);
     }
 
@@ -198,6 +209,13 @@ class ProfileController extends Controller
      */
     public function addActivity(Request $request, User $user): JsonResponse
     {
+        $activityModel = $this->profileActivityModel();
+        if ($activityModel === null) {
+            return response()->json([
+                'message' => 'Profile activity tracking is not available.',
+            ], 404);
+        }
+
         $data = $request->validate([
             'type' => ['required', 'string', 'in:upload,review,certification,project,update,achievement'],
             'title' => ['required', 'string', 'max:255'],
@@ -207,7 +225,7 @@ class ProfileController extends Controller
             'occurred_at' => ['nullable', 'date'],
         ]);
 
-        $activity = ProfileActivity::create([
+        $activity = $activityModel::create([
             'user_id' => $user->id,
             'type' => $data['type'],
             'title' => $data['title'],
@@ -228,7 +246,14 @@ class ProfileController extends Controller
      */
     public function deleteActivity(Request $request, User $user, int $activityId): JsonResponse
     {
-        $activity = ProfileActivity::where('user_id', $user->id)
+        $activityModel = $this->profileActivityModel();
+        if ($activityModel === null) {
+            return response()->json([
+                'message' => 'Profile activity tracking is not available.',
+            ], 404);
+        }
+
+        $activity = $activityModel::where('user_id', $user->id)
             ->where('id', $activityId)
             ->first();
 
@@ -252,5 +277,16 @@ class ProfileController extends Controller
     {
         $diff = $datetime->diffForHumans();
         return str_replace([' ago', 'from now'], ['', ''], $diff);
+    }
+
+    private function profileActivityModel(): ?string
+    {
+        $modelClass = \App\Models\ProfileActivity::class;
+
+        if (!class_exists($modelClass) || !Schema::hasTable('profile_activities')) {
+            return null;
+        }
+
+        return $modelClass;
     }
 }

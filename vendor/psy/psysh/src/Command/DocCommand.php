@@ -19,7 +19,6 @@ use Psy\Input\CodeArgument;
 use Psy\ManualUpdater\ManualUpdate;
 use Psy\Reflection\ReflectionConstant;
 use Psy\Reflection\ReflectionLanguageConstruct;
-use Psy\Util\Tty;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputDefinition;
@@ -322,7 +321,7 @@ HELP
 
                 case 3:
                     if ($doc = $manual->get($id)) {
-                        $width = Tty::getWidth();
+                        $width = $this->getTerminalWidth();
                         $formatter = new ManualFormatter($width, $manual);
 
                         return $formatter->format($doc);
@@ -332,5 +331,36 @@ HELP
         }
 
         return null;
+    }
+
+    /**
+     * Get the current terminal width for text wrapping.
+     *
+     * @return int Terminal width in columns
+     */
+    private function getTerminalWidth(): int
+    {
+        // Query terminal size directly
+        if (\function_exists('shell_exec')) {
+            // Output format: "rows cols"
+            $output = @\shell_exec('stty size </dev/tty 2>/dev/null');
+            if ($output && \preg_match('/^\d+ (\d+)$/', \trim($output), $matches)) {
+                return (int) $matches[1];
+            }
+
+            $width = @\shell_exec('tput cols </dev/tty 2>/dev/null');
+            if ($width && \is_numeric(\trim($width))) {
+                return (int) \trim($width);
+            }
+        }
+
+        // Check COLUMNS environment variable (may be stale after resize)
+        $width = \getenv('COLUMNS');
+        if ($width && \is_numeric(\trim($width))) {
+            return (int) \trim($width);
+        }
+
+        // Fallback to 100 if we can't detect
+        return 100;
     }
 }

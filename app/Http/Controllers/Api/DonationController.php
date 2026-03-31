@@ -7,16 +7,22 @@ use App\Models\Campaign;
 use App\Models\Donation;
 use App\Models\DonationStatusHistory;
 use App\Models\Notification;
+use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class DonationController extends Controller
 {
+    private const MIN_DONATION_AMOUNT = 0.001;
+
     public function index(): JsonResponse
     {
         return response()->json(Donation::query()->orderByDesc('id')->get());
@@ -28,7 +34,7 @@ class DonationController extends Controller
             'user_id' => ['required', 'integer', 'exists:users,id'],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'campaign_id' => ['nullable', 'integer', 'exists:campaigns,id'],
-            'amount' => ['required', 'numeric', 'min:1'],
+            'amount' => ['required', 'numeric', 'min:' . self::MIN_DONATION_AMOUNT],
             'donation_type' => ['required', Rule::in(['money', 'material'])],
             'status' => ['nullable', 'string', 'max:50'],
             'payment_method' => ['nullable', 'string', 'max:100'],
@@ -69,17 +75,34 @@ class DonationController extends Controller
             $payment = null;
             if ($validated['donation_type'] === 'money') {
                 $paymentMethodName = trim((string) ($validated['payment_method'] ?? 'Credit Card'));
-                $paymentMethod = PaymentMethod::query()->firstOrCreate([
+                PaymentMethod::query()->firstOrCreate([
                     'method_name' => $paymentMethodName,
                 ]);
 
-                $payment = Payment::create([
-                    'donation_id' => $donation->id,
-                    'payment_method_id' => $paymentMethod->id,
-                    'transaction_reference' => $validated['transaction_reference'] ?? sprintf('CNY-%06d', $donation->id),
-                    'amount' => $validated['amount'],
-                    'payment_status' => $status,
-                ]);
+                $transactionReference = trim((string) ($validated['transaction_reference'] ?? sprintf('CNY-%06d', $donation->id)));
+                $existingPayment = null;
+
+                if ($transactionReference !== '') {
+                    $existingPayment = Payment::query()
+                        ->where('transaction_id', $transactionReference)
+                        ->orWhere('bill_number', $transactionReference)
+                        ->orWhere('md5', Str::lower($transactionReference))
+                        ->first();
+                }
+
+                $payment = $existingPayment
+                    ? array_merge($existingPayment->toArray(), [
+                        'transaction_reference' => $transactionReference,
+                        'payment_method' => $paymentMethodName,
+                        'payment_status' => $existingPayment->status,
+                    ])
+                    : [
+                        'id' => null,
+                        'transaction_reference' => $transactionReference,
+                        'payment_method' => $paymentMethodName,
+                        'payment_status' => $status,
+                        'amount' => (float) $validated['amount'],
+                    ];
             }
 
             if ($campaign && $validated['donation_type'] === 'money' && $status === 'completed') {
@@ -96,6 +119,10 @@ class DonationController extends Controller
                 ),
                 'type' => 'donation-confirmed',
             ]);
+
+            if ($status === 'completed') {
+                $this->notifyOrganizationAndAdmins($donation, $campaign);
+            }
 
             return [
                 'donation' => $donation->fresh(),
@@ -128,5 +155,57 @@ class DonationController extends Controller
         $record->delete();
 
         return response()->json(null, 204);
+    }
+
+    private function notifyOrganizationAndAdmins(Donation $donation, ?Campaign $campaign): void
+    {
+        $donor = User::query()->find($donation->user_id);
+        $organization = Organization::query()->find($donation->organization_id);
+
+        $donorName = $donor?->name ?: 'A donor';
+        $donorEmail = $donor?->email ?: null;
+        $campaignTitle = $campaign?->title ?: 'your campaign';
+        $amountLabel = '$' . number_format((float) $donation->amount, 2);
+        $subject = "New donation for {$campaignTitle}";
+        $messageBody = "{$donorName} donated {$amountLabel} to {$campaignTitle}.";
+        $message = implode("\n", array_filter([
+            "From: {$donorName}" . ($donorEmail ? " <{$donorEmail}>" : ''),
+            "Subject: {$subject}",
+            "Message: {$messageBody}",
+        ]));
+
+        Notification::create([
+            'user_id' => (int) $donation->user_id,
+            'recipient_type' => 'organization',
+            'recipient_id' => (int) $donation->organization_id,
+            'sender_type' => 'user',
+            'sender_name' => $donorName,
+            'sender_email' => $donorEmail,
+            'message' => $message,
+            'type' => 'donation-received',
+            'is_read' => false,
+        ]);
+
+        $adminRoleIds = Role::query()
+            ->whereIn('role_name', ['Admin', 'Super Admin'])
+            ->pluck('id');
+
+        $adminUsers = User::query()
+            ->whereIn('role_id', $adminRoleIds)
+            ->get();
+
+        foreach ($adminUsers as $adminUser) {
+            Notification::create([
+                'user_id' => (int) $donation->user_id,
+                'recipient_type' => 'admin',
+                'recipient_id' => (int) $adminUser->id,
+                'sender_type' => $organization ? 'organization' : 'user',
+                'sender_name' => $organization?->name ?: $donorName,
+                'sender_email' => $organization?->email ?: $donorEmail,
+                'message' => $message,
+                'type' => 'donation-received',
+                'is_read' => false,
+            ]);
+        }
     }
 }

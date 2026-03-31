@@ -21,7 +21,6 @@ use Symfony\Component\VarDumper\Cloner\Stub;
 class Presenter
 {
     const VERBOSE = 1;
-    const RAW = 2;
 
     private Cloner $cloner;
     private Dumper $dumper;
@@ -47,17 +46,17 @@ class Presenter
         'protected' => 'protected',
         'private'   => 'private',
         'meta'      => 'comment',
-        'key'       => 'array_key',
+        'key'       => 'comment',
         'index'     => 'number',
     ];
 
-    public function __construct(OutputFormatter $formatter, $forceArrayIndexes = false, bool $useDeprecatedMultilineStrings = false)
+    public function __construct(OutputFormatter $formatter, $forceArrayIndexes = false)
     {
         // Work around https://github.com/symfony/symfony/issues/23572
         $oldLocale = \setlocale(\LC_NUMERIC, 0);
         \setlocale(\LC_NUMERIC, 'C');
 
-        $this->dumper = new Dumper($formatter, $forceArrayIndexes, $useDeprecatedMultilineStrings);
+        $this->dumper = new Dumper($formatter, $forceArrayIndexes);
         $this->dumper->setStyles(self::STYLES);
 
         // Now put the locale back
@@ -94,17 +93,15 @@ class Presenter
      *
      * @param mixed $value
      */
-    public function presentRef($value, int $options = 0): string
+    public function presentRef($value): string
     {
-        return $this->present($value, 0, $options);
+        return $this->present($value, 0);
     }
 
     /**
      * Present a full representation of the value.
      *
      * If $depth is 0, the value will be presented as a ref instead.
-     * Use Presenter::RAW when the caller owns the final output write; the
-     * default escaped mode is for formatter-managed embedding contexts.
      *
      * @param mixed    $value
      * @param int|null $depth   (default: null)
@@ -134,13 +131,6 @@ class Presenter
 
         // Now put the locale back
         \setlocale(\LC_NUMERIC, $oldLocale);
-
-        return ($options & self::RAW) ? $output : $this->escapeOutput($output);
-    }
-
-    private function escapeOutput(string $output): string
-    {
-        $output = \preg_replace('/\\\\(?=[<>])/', '\\\\\\\\', $output);
 
         return OutputFormatter::escape($output);
     }

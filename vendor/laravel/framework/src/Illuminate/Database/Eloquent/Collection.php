@@ -398,11 +398,7 @@ class Collection extends BaseCollection implements QueueableCollection
         $dictionary = $this->getDictionary();
 
         foreach ($items as $item) {
-            $key = $this->getDictionaryKey($item->getKey());
-
-            if ($key !== null) {
-                $dictionary[$key] = $item;
-            }
+            $dictionary[$this->getDictionaryKey($item->getKey())] = $item;
         }
 
         return new static(array_values($dictionary));
@@ -478,9 +474,7 @@ class Collection extends BaseCollection implements QueueableCollection
         $dictionary = $this->getDictionary($items);
 
         foreach ($this->items as $item) {
-            $key = $this->getDictionaryKey($item->getKey());
-
-            if ($key === null || ! isset($dictionary[$key])) {
+            if (! isset($dictionary[$this->getDictionaryKey($item->getKey())])) {
                 $diff->add($item);
             }
         }
@@ -505,9 +499,7 @@ class Collection extends BaseCollection implements QueueableCollection
         $dictionary = $this->getDictionary($items);
 
         foreach ($this->items as $item) {
-            $key = $this->getDictionaryKey($item->getKey());
-
-            if ($key !== null && isset($dictionary[$key])) {
+            if (isset($dictionary[$this->getDictionaryKey($item->getKey())])) {
                 $intersect->add($item);
             }
         }
@@ -676,11 +668,7 @@ class Collection extends BaseCollection implements QueueableCollection
         $dictionary = [];
 
         foreach ($items as $value) {
-            $key = $this->getDictionaryKey($value->getKey());
-
-            if ($key !== null) {
-                $dictionary[$key] = $value;
-            }
+            $dictionary[$this->getDictionaryKey($value->getKey())] = $value;
         }
 
         return $dictionary;
