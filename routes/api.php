@@ -41,9 +41,23 @@ use App\Http\Controllers\Api\UserCredentialController;
 use App\Http\Controllers\Api\UserHistoryController;
 use App\Http\Controllers\Api\UserRoleController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Models\Organization;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+
+Route::get('/', function (): JsonResponse {
+    $organizations = Organization::query()->orderByDesc('id')->get();
+
+    return response()->json([
+        'status' => 'ok',
+        'service' => 'chomnuoy-backend',
+        'payload' => [
+            'organizations' => $organizations,
+        ],
+        'organizations' => $organizations,
+    ]);
+});
 
 Route::post('/auth/register', [AuthControllerRegister::class, 'register']);
 Route::post('/auth/login', [AuthControllerRegister::class, 'login']);

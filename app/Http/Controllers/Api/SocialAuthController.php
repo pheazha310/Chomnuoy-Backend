@@ -10,8 +10,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 
 class SocialAuthController extends Controller
@@ -77,10 +80,12 @@ class SocialAuthController extends Controller
             'credential' => ['required', 'string'],
         ]);
 
-        $googleClientId = trim((string) Config::get('services.google.client_id', ''));
-        if ($googleClientId === '') {
+        $allowedClientIds = $this->googleAllowedClientIds();
+
+        if ($allowedClientIds === []) {
             return response()->json([
                 'message' => 'Google login is not configured yet.',
+                'code' => 'google_not_configured',
             ], 422);
         }
 
@@ -92,6 +97,7 @@ class SocialAuthController extends Controller
             if (!$response->ok()) {
                 return response()->json([
                     'message' => 'Unable to verify Google login. Please try again.',
+                    'code' => 'google_token_verification_failed',
                 ], 422);
             }
 
@@ -100,15 +106,23 @@ class SocialAuthController extends Controller
             $email = (string) ($googleUser['email'] ?? '');
             $emailVerified = filter_var($googleUser['email_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-            if ($audience !== $googleClientId) {
+            if (!in_array($audience, $allowedClientIds, true)) {
+                Log::warning('Google token audience mismatch', [
+                    'provider' => 'google',
+                    'audience' => $audience,
+                    'allowed_client_ids' => $allowedClientIds,
+                ]);
+
                 return response()->json([
                     'message' => 'Google login is not allowed for this application.',
+                    'code' => 'google_client_id_mismatch',
                 ], 422);
             }
 
             if (!$emailVerified || trim($email) === '') {
                 return response()->json([
                     'message' => 'Google account email could not be verified.',
+                    'code' => 'google_email_not_verified',
                 ], 422);
             }
 
@@ -149,8 +163,7 @@ class SocialAuthController extends Controller
     protected function hasProviderConfiguration(string $provider): bool
     {
         if ($provider === 'google') {
-            $clientId = trim((string) Config::get('services.google.client_id', ''));
-            return $clientId !== '';
+            return $this->googleAllowedClientIds() !== [];
         }
 
         $clientId = trim((string) Config::get("services.{$provider}.client_id", ''));
@@ -178,12 +191,16 @@ class SocialAuthController extends Controller
             ['email' => $normalizedEmail],
             [
                 'name' => $defaultName,
+                'password' => Hash::make(Str::random(40)),
                 'status' => 'active',
                 'role_id' => $role->id,
             ]
         );
 
-        $user->last_seen_at = now();
+        if (Schema::hasColumn('users', 'last_seen_at')) {
+            $user->last_seen_at = now();
+        }
+
         if (!$user->name && $defaultName !== '') {
             $user->name = $defaultName;
         }
@@ -200,5 +217,18 @@ class SocialAuthController extends Controller
             ],
             'organization' => null,
         ];
+    }
+
+    protected function googleAllowedClientIds(): array
+    {
+        $configured = [
+            Config::get('services.google.client_id'),
+            ...explode(',', (string) env('GOOGLE_ALLOWED_CLIENT_IDS', '')),
+        ];
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($value) => trim((string) $value),
+            $configured
+        ))));
     }
 }
