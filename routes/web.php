@@ -13,14 +13,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/favicon.ico', function () {
-    return response()->noContent();
-});
-
 Route::get('/', function () {
-    return response()->json([
-        'app' => config('app.name'),
-        'status' => 'ok',
-        'message' => 'Chomnuoy backend is running.',
-    ]);
+    return view('welcome');
 });
