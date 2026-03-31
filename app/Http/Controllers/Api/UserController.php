@@ -27,7 +27,7 @@ class UserController extends Controller
 
         $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
         if (!$user) {
-            return response()->json(null);
+            return response()->json(['message' => 'User not found.'], 404);
         }
 
         return response()->json($user);

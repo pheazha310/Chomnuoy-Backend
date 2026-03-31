@@ -27,7 +27,7 @@ class OrganizationController extends Controller
 
         $organization = Organization::query()->whereRaw('LOWER(email) = ?', [$email])->first();
         if (!$organization) {
-            return response()->json(null);
+            return response()->json(['message' => 'Organization not found.'], 404);
         }
 
         return response()->json($organization);
@@ -66,7 +66,6 @@ class OrganizationController extends Controller
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'description' => ['nullable', 'string'],
-            'verified_status' => ['nullable', 'string', Rule::in(['pending', 'verified', 'inactive', 'Pending', 'Verified', 'Inactive'])],
             'avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ]);
 

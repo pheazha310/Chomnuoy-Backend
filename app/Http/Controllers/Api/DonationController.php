@@ -17,6 +17,8 @@ use Illuminate\Validation\ValidationException;
 
 class DonationController extends Controller
 {
+    private const MIN_DONATION_AMOUNT = 0.001;
+
     public function index(): JsonResponse
     {
         return response()->json(Donation::query()->orderByDesc('id')->get());
@@ -28,7 +30,7 @@ class DonationController extends Controller
             'user_id' => ['required', 'integer', 'exists:users,id'],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'campaign_id' => ['nullable', 'integer', 'exists:campaigns,id'],
-            'amount' => ['required', 'numeric', 'min:1'],
+            'amount' => ['required', 'numeric', 'min:' . self::MIN_DONATION_AMOUNT],
             'donation_type' => ['required', Rule::in(['money', 'material'])],
             'status' => ['nullable', 'string', 'max:50'],
             'payment_method' => ['nullable', 'string', 'max:100'],

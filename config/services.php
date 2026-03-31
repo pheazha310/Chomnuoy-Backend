@@ -69,13 +69,26 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    'facebook' => [
+        'client_id' => env('FACEBOOK_CLIENT_ID'),
+        'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
+        'redirect' => env('FACEBOOK_REDIRECT_URI'),
+    ],
+
     'bakong' => [
+        'api_url' => env('BAKONG_API_URL', 'https://api-bakong.nbc.gov.kh'),
         'token' => env('BAKONG_TOKEN'),
         'currency' => env('BAKONG_CURRENCY', 'USD'),
-        'static_qr_image' => env('BAKONG_STATIC_QR_IMAGE', env('ABA_STATIC_QR_IMAGE')),
-        'static_qr_string' => env('BAKONG_STATIC_QR_STRING', env('ABA_STATIC_QR_STRING')),
-        'static_qr_deeplink' => env('BAKONG_STATIC_QR_DEEPLINK', env('ABA_STATIC_QR_DEEPLINK')),
-        'static_qr_name' => env('BAKONG_STATIC_QR_NAME', env('ABA_STATIC_QR_NAME', 'Bakong KHQR')),
+        'static_qr_image' => env('BAKONG_STATIC_QR_IMAGE', ''),
+        'static_qr_string' => env('BAKONG_STATIC_QR_STRING', ''),
+        'static_qr_deeplink' => env('BAKONG_STATIC_QR_DEEPLINK', ''),
+        'static_qr_name' => env('BAKONG_STATIC_QR_NAME', 'Bakong KHQR'),
+        'merchant' => [
+            'bakong_id' => env('BAKONG_MERCHANT_ID') ?: env('MERCHANT_BAKONG_ID', 'demo_merchant_id_123'),
+            'name' => env('BAKONG_MERCHANT_NAME') ?: env('MERCHANT_NAME', 'Chomnuoy System'),
+            'city' => env('BAKONG_MERCHANT_CITY') ?: env('MERCHANT_CITY', 'Phnom Penh'),
+            'acquiring_bank' => env('BAKONG_ACQUIRING_BANK') ?: env('ACQUIRING_BANK', 'Bakong'),
+        ],
     ],
 
     'aba_payway' => [

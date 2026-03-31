@@ -11,7 +11,10 @@ class CustomCors
     {
         $response = $next($request);
         
-        $response->headers->set('Access-Control-Allow-Origin', '*');
+        // Handle null origin by setting it to *
+        $origin = $request->header('Origin') ?: '*';
+        
+        $response->headers->set('Access-Control-Allow-Origin', $origin);
         $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
         

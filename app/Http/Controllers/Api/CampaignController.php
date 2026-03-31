@@ -5,10 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\CampaignImage;
-use App\Models\Notification;
-use App\Models\Organization;
-use App\Models\Role;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,101 +13,123 @@ use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
 {
-    private function notifyDonorsAboutCampaign(Campaign $campaign, string $action = 'published'): void
+    private const SUCCESSFUL_PAYMENT_STATUSES = ['completed', 'success', 'confirmed', 'paid'];
+    private const USD_TO_KHR_RATE = 4100;
+
+    private function successfulDonationAmountSubquery()
     {
-        $status = strtolower((string) ($campaign->status ?? ''));
-        if ($status !== 'active') {
-            return;
-        }
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
 
-        $donorRoleId = Role::query()->where('role_name', 'Donor')->value('id');
-        if (!$donorRoleId) {
-            return;
-        }
-
-        $organizationName = DB::table('organizations')
-            ->where('id', $campaign->organization_id)
-            ->value('name') ?? 'An organization';
-
-        $message = $action === 'updated'
-            ? sprintf('%s updated the campaign "%s".', $organizationName, $campaign->title)
-            : sprintf('%s posted a new campaign: "%s".', $organizationName, $campaign->title);
-
-        $donorIds = User::query()
-            ->where('role_id', $donorRoleId)
-            ->pluck('id');
-
-        foreach ($donorIds as $donorId) {
-            Notification::create([
-                'user_id' => (int) $donorId,
-                'sender_type' => 'organization',
-                'sender_name' => $organizationName,
-                'recipient_type' => 'user',
-                'recipient_id' => $donorId,
-                'message' => $message,
-                'type' => 'campaign',
-                'is_read' => false,
-            ]);
-        }
+        return DB::table('donations')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN donation_type = 'money' AND LOWER(status) IN ({$statusList}) THEN amount
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereColumn('campaign_id', 'campaigns.id');
     }
 
-    private function notifyCampaignPublished(Campaign $campaign): void
+    private function successfulTransactionAmountSubquery()
     {
-        $title = trim((string) ($campaign->title ?? 'Untitled Campaign'));
-        $organizationId = (int) ($campaign->organization_id ?? 0);
-        $organizationName = 'Organization';
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
+        $rate = self::USD_TO_KHR_RATE;
 
-        if ($organizationId > 0) {
-            $organizationName = Organization::query()
-                ->where('id', $organizationId)
-                ->value('name') ?? 'Organization';
-        }
+        return DB::table('transactions')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN LOWER(status) IN ({$statusList}) THEN
+                            CASE
+                                WHEN UPPER(currency) = 'KHR' THEN amount / {$rate}
+                                ELSE amount
+                            END
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereNull('donation_id')
+            ->whereColumn('campaign_id', 'campaigns.id');
+    }
 
-        $message = sprintf('New campaign published: %s', $title);
+    private function successfulDirectPaymentAmountSubquery()
+    {
+        $rate = self::USD_TO_KHR_RATE;
 
-        if ($organizationId > 0) {
-            Notification::create([
-                'user_id' => $organizationId,
-                'sender_type' => 'organization',
-                'sender_name' => $organizationName,
-                'recipient_type' => 'organization',
-                'recipient_id' => $organizationId,
-                'message' => $message,
-                'type' => 'campaign',
-                'is_read' => false,
-            ]);
-        }
+        return DB::table('payments')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN status = 'SUCCESS' THEN
+                            CASE
+                                WHEN UPPER(currency) = 'KHR' THEN amount / {$rate}
+                                ELSE amount
+                            END
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereRaw("bill_number LIKE CONCAT('DON-', campaigns.id, '-%')");
+    }
 
-        Notification::create([
-            'user_id' => $organizationId > 0 ? $organizationId : 1,
-            'sender_type' => 'organization',
-            'sender_name' => $organizationName,
-            'recipient_type' => 'admin',
-            'message' => $message,
-            'type' => 'campaign',
-            'is_read' => false,
-        ]);
+    private function successfulSupporterCountExpression(): string
+    {
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
 
-        $donorIds = User::query()
-            ->join('roles', 'roles.id', '=', 'users.role_id')
-            ->whereRaw('LOWER(roles.role_name) = ?', ['donor'])
-            ->pluck('users.id')
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
+        return "
+            (
+                SELECT COUNT(DISTINCT supporter_rows.user_id)
+                FROM (
+                    SELECT donations.user_id
+                    FROM donations
+                    WHERE donations.campaign_id = campaigns.id
+                      AND donations.donation_type = 'money'
+                      AND LOWER(donations.status) IN ({$statusList})
 
-        foreach ($donorIds as $donorId) {
-            Notification::create([
-                'user_id' => $donorId,
-                'sender_type' => 'organization',
-                'sender_name' => $organizationName,
-                'recipient_type' => 'user',
-                'recipient_id' => $donorId,
-                'message' => $message,
-                'type' => 'campaign',
-                'is_read' => false,
-            ]);
-        }
+                    UNION
+
+                    SELECT transactions.user_id
+                    FROM transactions
+                    WHERE transactions.campaign_id = campaigns.id
+                      AND transactions.donation_id IS NULL
+                      AND LOWER(transactions.status) IN ({$statusList})
+
+                    UNION
+
+                    SELECT payments.id as user_id
+                    FROM payments
+                    WHERE payments.status = 'SUCCESS'
+                      AND payments.bill_number LIKE CONCAT('DON-', campaigns.id, '-%')
+                ) AS supporter_rows
+            )
+        ";
+    }
+
+    private function withCampaignLiveTotals($query)
+    {
+        return $query
+            ->addSelect([
+                'successful_donation_amount' => $this->successfulDonationAmountSubquery(),
+                'successful_transaction_amount' => $this->successfulTransactionAmountSubquery(),
+                'successful_direct_payment_amount' => $this->successfulDirectPaymentAmountSubquery(),
+            ])
+            ->selectRaw(
+                '('
+                . $this->successfulDonationAmountSubquery()->toSql()
+                . ') + ('
+                . $this->successfulTransactionAmountSubquery()->toSql()
+                . ') + ('
+                . $this->successfulDirectPaymentAmountSubquery()->toSql()
+                . ') as live_current_amount',
+                array_merge(
+                    $this->successfulDonationAmountSubquery()->getBindings(),
+                    $this->successfulTransactionAmountSubquery()->getBindings(),
+                    $this->successfulDirectPaymentAmountSubquery()->getBindings(),
+                )
+            )
+            ->selectRaw($this->successfulSupporterCountExpression() . ' as live_supporter_count');
     }
 
     private function preparePayload(Request $request): array
@@ -140,15 +158,9 @@ class CampaignController extends Controller
 
     public function index(): JsonResponse
     {
-        $records = Campaign::query()
-            ->leftJoin('organizations', 'organizations.id', '=', 'campaigns.organization_id')
-            ->select(
-                'campaigns.*',
-                'organizations.name as organization_name',
-                'organizations.location as organization_location',
-                'organizations.latitude as organization_latitude',
-                'organizations.longitude as organization_longitude'
-            )
+        $records = $this->withCampaignLiveTotals(
+            Campaign::query()->select('campaigns.*')
+        )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')
@@ -165,26 +177,15 @@ class CampaignController extends Controller
     {
         $payload = $this->preparePayload($request);
         $record = Campaign::create($payload);
-        $this->notifyDonorsAboutCampaign($record, 'published');
-
-        if (strtolower((string) ($record->status ?? '')) === 'active') {
-            $this->notifyCampaignPublished($record);
-        }
 
         return response()->json($record, 201);
     }
 
     public function show(int $id): JsonResponse
     {
-        $record = Campaign::query()
-            ->leftJoin('organizations', 'organizations.id', '=', 'campaigns.organization_id')
-            ->select(
-                'campaigns.*',
-                'organizations.name as organization_name',
-                'organizations.location as organization_location',
-                'organizations.latitude as organization_latitude',
-                'organizations.longitude as organization_longitude'
-            )
+        $record = $this->withCampaignLiveTotals(
+            Campaign::query()->select('campaigns.*')
+        )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')
@@ -198,19 +199,8 @@ class CampaignController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $record = Campaign::findOrFail($id);
-        $wasActive = strtolower((string) ($record->status ?? '')) === 'active';
         $payload = $this->preparePayload($request);
         $record->update($payload);
-        $record->refresh();
-
-        if (!$wasActive && strtolower((string) ($record->status ?? '')) === 'active') {
-            $this->notifyDonorsAboutCampaign($record, 'published');
-        }
-
-        $isActive = strtolower((string) ($record->status ?? '')) === 'active';
-        if (!$wasActive && $isActive) {
-            $this->notifyCampaignPublished($record);
-        }
 
         return response()->json($record);
     }
