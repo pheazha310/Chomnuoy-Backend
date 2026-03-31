@@ -14,8 +14,5 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return response()->json([
-        'status' => 'ok',
-        'service' => 'chomnuoy-backend',
-    ]);
+    return view('welcome');
 });

@@ -13,9 +13,7 @@ class ExampleTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertJson([
-                'status' => 'ok',
-                'service' => 'chomnuoy-backend',
-            ]);
+            ->assertSee('Laravel')
+            ->assertSee('Documentation');
     }
 }
