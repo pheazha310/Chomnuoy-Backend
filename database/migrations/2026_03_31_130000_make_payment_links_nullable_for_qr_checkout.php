@@ -12,8 +12,13 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('ALTER TABLE payments ALTER COLUMN donation_id DROP NOT NULL');
-        DB::statement('ALTER TABLE payments ALTER COLUMN payment_method_id DROP NOT NULL');
+        if (Schema::hasColumn('payments', 'donation_id')) {
+            DB::statement('ALTER TABLE payments ALTER COLUMN donation_id DROP NOT NULL');
+        }
+
+        if (Schema::hasColumn('payments', 'payment_method_id')) {
+            DB::statement('ALTER TABLE payments ALTER COLUMN payment_method_id DROP NOT NULL');
+        }
     }
 
     public function down(): void
@@ -22,10 +27,14 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('UPDATE payments SET payment_method_id = 1 WHERE payment_method_id IS NULL');
-        DB::statement('UPDATE payments SET donation_id = 1 WHERE donation_id IS NULL');
+        if (Schema::hasColumn('payments', 'payment_method_id')) {
+            DB::statement('UPDATE payments SET payment_method_id = 1 WHERE payment_method_id IS NULL');
+            DB::statement('ALTER TABLE payments ALTER COLUMN payment_method_id SET NOT NULL');
+        }
 
-        DB::statement('ALTER TABLE payments ALTER COLUMN donation_id SET NOT NULL');
-        DB::statement('ALTER TABLE payments ALTER COLUMN payment_method_id SET NOT NULL');
+        if (Schema::hasColumn('payments', 'donation_id')) {
+            DB::statement('UPDATE payments SET donation_id = 1 WHERE donation_id IS NULL');
+            DB::statement('ALTER TABLE payments ALTER COLUMN donation_id SET NOT NULL');
+        }
     }
 };
