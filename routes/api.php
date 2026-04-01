@@ -1,8 +1,8 @@
 <?php
 
-use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AbaPayWayController;
 use App\Http\Controllers\Api\AdminProfileController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthControllerRegister;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\CampaignImageController;
@@ -28,8 +28,8 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\UserCredentialController;
 use App\Http\Controllers\Api\UserHistoryController;
 use App\Http\Controllers\Api\UserRoleController;
-use Illuminate\Http\JsonResponse;
 use App\Models\Organization;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthControllerRegister::class, 'register']);
@@ -39,6 +39,7 @@ Route::get('/auth/providers/status', [SocialAuthController::class, 'status']);
 Route::post('/auth/{provider}/token', [SocialAuthController::class, 'token']);
 Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect']);
 Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback']);
+
 Route::get('/health', function (): JsonResponse {
     return response()->json([
         'status' => 'ok',
@@ -83,26 +84,29 @@ Route::apiResource('notifications', NotificationController::class);
 Route::apiResource('audit_logs', AuditLogController::class);
 Route::get('report/admin-dashboard', [ReportController::class, 'adminDashboard']);
 Route::apiResource('report', ReportController::class);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile/me', [ProfileController::class, 'me']);
     Route::post('profile/me', [ProfileController::class, 'updateMe']);
 });
+
 Route::get('profile/{user}', [ProfileController::class, 'show']);
 Route::post('profile/{user}', [ProfileController::class, 'update']);
 Route::post('profile/{user}/password', [ProfileController::class, 'updatePassword']);
 Route::post('profile/{user}/avatar', [ProfileController::class, 'uploadAvatar']);
 Route::post('profile/{user}/activities', [ProfileController::class, 'addActivity']);
 Route::delete('profile/{user}/activities/{activityId}', [ProfileController::class, 'deleteActivity']);
+
 Route::get('admin/profile/{user}', [AdminProfileController::class, 'show']);
 Route::post('admin/profile/{user}', [AdminProfileController::class, 'update']);
 Route::post('admin/profile/{user}/avatar', [AdminProfileController::class, 'uploadAvatar']);
 Route::post('admin/profile/{user}/password', [AdminProfileController::class, 'updatePassword']);
+
 Route::apiResource('campaigns', CampaignController::class);
 Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donations']);
 Route::get('campaigns/{campaign}/velocity', [CampaignController::class, 'velocity']);
 Route::apiResource('campaign_image', CampaignImageController::class);
 Route::apiResource('campaign_update', CampaignUpdateController::class);
-
 
 Route::post('/payment/generate', [PaymentController::class, 'generateQR']);
 Route::post('/payment/check', [PaymentController::class, 'checkPayment']);

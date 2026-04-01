@@ -8,8 +8,8 @@ use App\Models\CampaignImage;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CampaignController extends Controller
 {
@@ -224,7 +224,6 @@ class CampaignController extends Controller
             $campaign->status = $campaign->public_status ?? $this->normalizeCampaignStatus($campaign->status ?? null);
             return $campaign;
         });
-        // $records = Campaign::all();
 
         return response()->json($records);
     }

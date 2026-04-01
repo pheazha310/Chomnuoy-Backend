@@ -19,8 +19,6 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
-
-
 class AuthControllerRegister extends Controller
 {
     public function index(): JsonResponse
@@ -67,19 +65,19 @@ class AuthControllerRegister extends Controller
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'string', Rule::in(['Donor', 'Organization'])],
             'organization' => ['nullable', 'array'],
-            'organization.name' => [Rule::requiredIf(fn () => $request->input('role') === 'Organization'), 'nullable', 'string', 'max:255'],
+            'organization.name' => [Rule::requiredIf(fn() => $request->input('role') === 'Organization'), 'nullable', 'string', 'max:255'],
             'organization.category_id' => [
                 'nullable',
                 'integer',
                 'exists:categories,id',
-                Rule::requiredIf(fn () => $request->input('role') === 'Organization'
+                Rule::requiredIf(fn() => $request->input('role') === 'Organization'
                     && empty($request->input('organization.category_name_new'))),
             ],
             'organization.category_name_new' => [
                 'nullable',
                 'string',
                 'max:255',
-                Rule::requiredIf(fn () => $request->input('role') === 'Organization'
+                Rule::requiredIf(fn() => $request->input('role') === 'Organization'
                     && empty($request->input('organization.category_id'))),
             ],
             'organization.location' => ['nullable', 'string', 'max:255'],
@@ -207,10 +205,12 @@ class AuthControllerRegister extends Controller
             $user->last_seen_at = now();
             $user->save();
             $token = $user->createToken('frontend')->plainTextToken;
+
             Log::info('Auth login success', [
                 'email' => $email,
                 'account_type' => $roleName,
             ]);
+
             return response()->json([
                 'message' => 'Login successful',
                 'account_type' => $roleName,
@@ -249,7 +249,6 @@ class AuthControllerRegister extends Controller
                 ]);
             }
 
-            // If legacy plaintext password exists, upgrade it to a hash.
             if ($matchesPlaintext && !$matchesHashed) {
                 $organization->password = Hash::make($password);
                 $organization->save();
@@ -262,6 +261,7 @@ class AuthControllerRegister extends Controller
                 'email' => $email,
                 'account_type' => 'Organization',
             ]);
+
             return response()->json([
                 'message' => 'Login successful',
                 'account_type' => 'Organization',

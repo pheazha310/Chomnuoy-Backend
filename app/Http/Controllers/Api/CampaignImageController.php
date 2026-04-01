@@ -11,10 +11,41 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class CampaignImageController extends Controller
 {
+    private const ALLOWED_IMAGE_EXTENSIONS = [
+        'avif',
+        'jfif',
+        'jpg',
+        'jpeg',
+        'png',
+        'gif',
+        'webp',
+        'bmp',
+        'svg',
+        'heic',
+        'heif',
+    ];
+
+    private const ALLOWED_IMAGE_MIME_TYPES = [
+        'image/avif',
+        'image/bmp',
+        'image/gif',
+        'image/heic',
+        'image/heif',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/svg+xml',
+        'image/webp',
+        'image/x-ms-bmp',
+        'image/pipeg',
+        'image/pjpeg',
+    ];
+
     public function index(): JsonResponse
     {
         $campaignId = request()->query('campaign_id');
@@ -34,8 +65,9 @@ class CampaignImageController extends Controller
             if ($request->hasFile('image')) {
                 $validated = $request->validate([
                     'campaign_id' => ['required', 'integer', 'exists:campaigns,id'],
-                    'image' => ['required', 'image', 'max:5120'],
+                    'image' => ['required', 'file', 'max:5120'],
                 ]);
+                $this->assertSupportedImageUpload($request->file('image'));
 
                 $path = $this->storeUploadedImage($request->file('image'));
 
@@ -55,6 +87,12 @@ class CampaignImageController extends Controller
             $record = CampaignImage::create($validated);
 
             return response()->json($record, 201);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'message' => 'Failed to upload campaign image.',
+                'errors' => $exception->errors(),
+                'error' => collect($exception->errors())->flatten()->first(),
+            ], 422);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -79,8 +117,9 @@ class CampaignImageController extends Controller
             if ($request->hasFile('image')) {
                 $validated = $request->validate([
                     'campaign_id' => ['sometimes', 'integer', 'exists:campaigns,id'],
-                    'image' => ['required', 'image', 'max:5120'],
+                    'image' => ['required', 'file', 'max:5120'],
                 ]);
+                $this->assertSupportedImageUpload($request->file('image'));
 
                 $this->deleteImagePath($record->image_path);
 
@@ -101,6 +140,12 @@ class CampaignImageController extends Controller
             $record->update($validated);
 
             return response()->json($record);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'message' => 'Failed to update campaign image.',
+                'errors' => $exception->errors(),
+                'error' => collect($exception->errors())->flatten()->first(),
+            ], 422);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -158,5 +203,29 @@ class CampaignImageController extends Controller
         }
 
         Storage::disk('public')->delete($path);
+    }
+
+    private function assertSupportedImageUpload(?UploadedFile $file): void
+    {
+        if (!$file instanceof UploadedFile) {
+            throw ValidationException::withMessages([
+                'image' => 'An image file is required.',
+            ]);
+        }
+
+        $extension = Str::lower((string) $file->getClientOriginalExtension());
+        $clientMimeType = Str::lower((string) $file->getClientMimeType());
+        $finfoMimeType = Str::lower((string) $file->getMimeType());
+        $acceptedByExtension = in_array($extension, self::ALLOWED_IMAGE_EXTENSIONS, true);
+        $acceptedByMimeType = in_array($clientMimeType, self::ALLOWED_IMAGE_MIME_TYPES, true)
+            || in_array($finfoMimeType, self::ALLOWED_IMAGE_MIME_TYPES, true)
+            || str_starts_with($clientMimeType, 'image/')
+            || str_starts_with($finfoMimeType, 'image/');
+
+        if (!$acceptedByExtension && !$acceptedByMimeType) {
+            throw ValidationException::withMessages([
+                'image' => 'Unsupported image format. Please upload JPG, PNG, GIF, WEBP, BMP, SVG, AVIF, JFIF, HEIC, or HEIF.',
+            ]);
+        }
     }
 }

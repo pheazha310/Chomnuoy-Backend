@@ -10,12 +10,11 @@ use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Response;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Http\Request;
 use Laravel\Socialite\Facades\Socialite;
 
 class SocialAuthController extends Controller
@@ -59,6 +58,7 @@ class SocialAuthController extends Controller
             $socialUser = $provider === 'google'
                 ? $this->userFromGoogleCredential($validated['credential'])
                 : Socialite::driver($provider)->stateless()->userFromToken($validated['credential']);
+
             return response()->json($this->buildSocialLoginPayload($socialUser));
         } catch (\Throwable $e) {
             Log::error('Social token login failed', [
@@ -80,6 +80,7 @@ class SocialAuthController extends Controller
 
         try {
             $socialUser = Socialite::driver($provider)->stateless()->user();
+
             return $this->redirectToFrontendPayload($this->buildSocialLoginPayload($socialUser));
         } catch (\Throwable $e) {
             Log::error('Social login failed', [
@@ -95,7 +96,7 @@ class SocialAuthController extends Controller
     {
         $frontend = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
         $encoded = base64_encode(json_encode($payload));
-        
+
         return redirect("{$frontend}/oauth/callback?payload=" . urlencode($encoded));
     }
 
@@ -146,6 +147,7 @@ class SocialAuthController extends Controller
             $user->password = Hash::make('password');
         }
         $user->save();
+
         $token = $user->createToken('frontend')->plainTextToken;
 
         return [
@@ -167,7 +169,7 @@ class SocialAuthController extends Controller
     protected function redirectToFrontendError(string $message): RedirectResponse
     {
         $frontend = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
-        
+
         return redirect("{$frontend}/oauth/callback?error=" . urlencode($message));
     }
 
@@ -188,7 +190,7 @@ class SocialAuthController extends Controller
                 JWK::parseKeySet($this->getGoogleJwks())
             );
         } catch (\Throwable $e) {
-            throw new \RuntimeException('Failed to verify Google JWT token: '.$e->getMessage(), previous: $e);
+            throw new \RuntimeException('Failed to verify Google JWT token: ' . $e->getMessage(), previous: $e);
         }
 
         $issuer = (string) ($user['iss'] ?? '');

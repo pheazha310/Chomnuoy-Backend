@@ -6,22 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\Donation;
 use App\Models\DonationStatusHistory;
+use App\Models\Notification;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\KHQRService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Services\KHQRService;
 use Illuminate\Support\Facades\Log;
-use App\Models\Notification;
-use App\Models\PaymentMethod;
-use App\Models\User;
-use App\Models\Role;
 use Illuminate\Support\Facades\Schema;
 
 class PaymentController extends Controller
 {
     private const PAYMENT_EXPIRY_MINUTES = 5;
     private const MIN_USD_AMOUNT = 0.001;
-    
+
     protected KHQRService $khqrService;
 
     public function __construct(KHQRService $khqrService)
@@ -68,7 +68,6 @@ class PaymentController extends Controller
             $payment->markAsSuccess($result, $transactionId);
             $payment = $this->ensureDonationRecorded($payment->fresh());
 
-            // Send notifications to organization and admin roles (not donor)
             $updatedPayment = $payment->fresh();
             if ($updatedPayment->status === 'SUCCESS') {
                 $recipientRoles = ['Organization', 'Admin'];
@@ -122,10 +121,6 @@ class PaymentController extends Controller
         return response()->json(null, 204);
     }
 
-
-    /**
-     * Generate KHQR for payment
-     */
     public function generateQR(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -171,9 +166,7 @@ class PaymentController extends Controller
                 'method_name' => 'Bakong KHQR',
             ]);
 
-            $campaign = $campaignId
-                ? Campaign::query()->find($campaignId)
-                : null;
+            $campaign = $campaignId ? Campaign::query()->find($campaignId) : null;
             $organizationId = $validated['organization_id'] ?? $campaign?->organization_id;
             $transactionReference = json_encode(array_filter([
                 'source' => 'qr_checkout',
@@ -184,7 +177,6 @@ class PaymentController extends Controller
                 'bill_number' => $validated['bill_number'],
             ], fn ($value) => $value !== null));
 
-            // Older databases may not yet have all payment linkage columns.
             $paymentData = [
                 'user_id' => $validated['user_id'] ?? null,
                 'md5' => $result['data']['md5'],
@@ -196,6 +188,7 @@ class PaymentController extends Controller
                 'store_label' => $validated['store_label'] ?? null,
                 'terminal_label' => $validated['terminal_label'] ?? null,
                 'merchant_name' => config('services.bakong.merchant.name'),
+                'status' => 'PENDING',
                 'expires_at' => now()->addMinutes(self::PAYMENT_EXPIRY_MINUTES),
             ];
 
@@ -221,7 +214,7 @@ class PaymentController extends Controller
                 'payment_id' => $payment->id,
                 'md5' => $payment->md5,
                 'amount' => $payment->amount,
-                'currency' => $payment->currency
+                'currency' => $payment->currency,
             ]);
 
             return response()->json([
@@ -236,7 +229,7 @@ class PaymentController extends Controller
         } catch (\Exception $e) {
             Log::error('Exception in generateQR', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -246,9 +239,6 @@ class PaymentController extends Controller
         }
     }
 
-    /**
-     * Check payment status
-     */
     public function checkPayment(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -292,19 +282,16 @@ class PaymentController extends Controller
 
         return response()->json([
             'success' => false,
-            'status'  => 'PENDING',
+            'status' => 'PENDING',
             'message' => 'Payment not yet completed',
-            'data'    => [
-                'check_attempts'  => $payment->check_attempts,
+            'data' => [
+                'check_attempts' => $payment->check_attempts,
                 'last_checked_at' => $payment->last_checked_at,
-                'expires_at'      => $payment->expires_at,
+                'expires_at' => $payment->expires_at,
             ],
         ]);
     }
 
-    /**
-     * Get payment status by ID
-     */
     public function getPaymentStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -350,9 +337,6 @@ class PaymentController extends Controller
         ]);
     }
 
-    /**
-     * Verify QR code
-     */
     public function verifyQR(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -364,9 +348,6 @@ class PaymentController extends Controller
         return response()->json($result);
     }
 
-    /**
-     * Decode QR code
-     */
     public function decodeQR(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -378,9 +359,6 @@ class PaymentController extends Controller
         return response()->json($result);
     }
 
-    /**
-     * Generate deep link
-     */
     public function generateDeepLink(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -486,6 +464,4 @@ class PaymentController extends Controller
 
         return $context;
     }
-
-
 }
