@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use App\Services\KHQRService;
 use Illuminate\Support\Facades\Log;
 use App\Models\Notification;
-use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Models\Role;
 
@@ -150,17 +149,9 @@ class PaymentController extends Controller
                 ], 500);
             }
 
-            $paymentMethod = PaymentMethod::query()->firstOrCreate([
-                'method_name' => 'Bakong KHQR',
-            ]);
-
             // Save payment to database
             $payment = Payment::create([
                 'user_id' => $validated['user_id'] ?? null,
-                'donation_id' => null,
-                'payment_method_id' => $paymentMethod->id,
-                'transaction_reference' => $validated['bill_number'] ?? null,
-                'payment_status' => 'pending',
                 'md5' => $result['data']['md5'],
                 'qr_code' => $result['data']['qr'],
                 'amount' => $validated['amount'],

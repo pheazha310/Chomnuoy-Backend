@@ -12,10 +12,6 @@ class Payment extends Model
 
     protected $fillable = [
         'user_id',
-        'donation_id',
-        'payment_method_id',
-        'transaction_reference',
-        'payment_status',
         'md5',
         'qr_code',
         'amount',
