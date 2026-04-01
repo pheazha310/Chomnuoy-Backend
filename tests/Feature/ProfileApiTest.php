@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Campaign;
 use App\Models\User;
+use App\Services\KHQRService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -242,6 +243,86 @@ class ProfileApiTest extends TestCase
             ->assertJsonPath('0.title', 'Books for Students')
             ->assertJsonPath('0.status', 'active')
             ->assertJsonPath('0.public_status', 'active');
+    }
+
+    public function test_generate_qr_auto_generates_bill_number(): void
+    {
+        $this->mock(KHQRService::class, function ($mock) {
+            $mock->shouldReceive('generateIndividualQR')
+                ->once()
+                ->withArgs(function (array $payload) {
+                    return !empty($payload['bill_number']);
+                })
+                ->andReturn([
+                    'data' => [
+                        'qr' => 'dummy-qr',
+                        'md5' => 'dummy-md5',
+                    ],
+                ]);
+        });
+
+        $response = $this->postJson('/api/payment/generate', [
+            'amount' => 100,
+            'currency' => 'KHR',
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertNotEmpty($response->json('bill_number'));
+    }
+
+    public function test_backfill_command_creates_donation_from_successful_payment(): void
+    {
+        $category = Category::create(['category_name' => 'Disaster Relief']);
+        $organization = Organization::create([
+            'name' => 'Rescue Org',
+            'email' => 'rescue@example.com',
+            'password' => bcrypt('password123'),
+            'category_id' => $category->id,
+            'verified_status' => 'verified',
+        ]);
+
+        $role = Role::create(['role_name' => 'Donor']);
+        $user = User::create([
+            'name' => 'Donor',
+            'email' => 'donor2@example.com',
+            'password' => bcrypt('password123'),
+            'status' => 'active',
+            'role_id' => $role->id,
+        ]);
+
+        $payment = Payment::create([
+            'user_id' => $user->id,
+            'md5' => 'backfill-md5',
+            'qr_code' => 'dummy-qr',
+            'amount' => 25,
+            'currency' => 'USD',
+            'status' => 'SUCCESS',
+            'transaction_reference' => json_encode([
+                'source' => 'qr_checkout',
+                'user_id' => $user->id,
+                'organization_id' => $organization->id,
+                'donation_type' => 'money',
+            ]),
+            'expires_at' => now()->addMinutes(5),
+            'check_attempts' => 0,
+        ]);
+
+        $this->artisan('payments:backfill-donations')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('donations', [
+            'user_id' => $user->id,
+            'organization_id' => $organization->id,
+            'amount' => '25.00',
+            'status' => 'completed',
+        ]);
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('payments', 'donation_id')) {
+            $this->assertNotNull($payment->fresh()->donation_id);
+        }
     }
 
     private function fakePngUpload(): \Illuminate\Http\UploadedFile

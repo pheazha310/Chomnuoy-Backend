@@ -29,6 +29,13 @@ class PaymentController extends Controller
         $this->khqrService = $khqrService;
     }
 
+    private function makeBillNumber(?int $campaignId = null): string
+    {
+        $prefix = $campaignId ? "DON-{$campaignId}" : 'PAY';
+
+        return sprintf('%s-%s', $prefix, now()->format('YmdHisv'));
+    }
+
     private function syncPaymentStatus(Payment $payment): Payment
     {
         if ($payment->status === 'SUCCESS') {
@@ -137,6 +144,9 @@ class PaymentController extends Controller
         $type = $validated['type'] ?? 'individual';
 
         try {
+            $campaignId = !empty($validated['campaign_id']) ? (int) $validated['campaign_id'] : null;
+            $validated['bill_number'] = trim((string) ($validated['bill_number'] ?? '')) ?: $this->makeBillNumber($campaignId);
+
             $result = $type === 'merchant'
                 ? $this->khqrService->generateMerchantQR($validated)
                 : $this->khqrService->generateIndividualQR($validated);
@@ -161,16 +171,17 @@ class PaymentController extends Controller
                 'method_name' => 'Bakong KHQR',
             ]);
 
-            $campaign = !empty($validated['campaign_id'])
-                ? Campaign::query()->find($validated['campaign_id'])
+            $campaign = $campaignId
+                ? Campaign::query()->find($campaignId)
                 : null;
             $organizationId = $validated['organization_id'] ?? $campaign?->organization_id;
             $transactionReference = json_encode(array_filter([
                 'source' => 'qr_checkout',
                 'user_id' => $validated['user_id'] ?? null,
                 'organization_id' => $organizationId,
-                'campaign_id' => $validated['campaign_id'] ?? null,
+                'campaign_id' => $campaignId,
                 'donation_type' => 'money',
+                'bill_number' => $validated['bill_number'],
             ], fn ($value) => $value !== null));
 
             // Older databases may not yet have all payment linkage columns.
@@ -218,6 +229,7 @@ class PaymentController extends Controller
                 'qr_code' => $result['data']['qr'],
                 'md5' => $result['data']['md5'],
                 'payment_id' => $payment->id,
+                'bill_number' => $payment->bill_number,
                 'expires_at' => $payment->expires_at->toISOString(),
                 'message' => 'QR generated successfully',
             ]);
