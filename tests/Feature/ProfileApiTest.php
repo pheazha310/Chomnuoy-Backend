@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Role;
 use App\Models\Organization;
+use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -128,6 +129,90 @@ class ProfileApiTest extends TestCase
 
         $this->assertNotNull($user->fresh()->avatar_path);
         Storage::disk('public')->assertExists($user->fresh()->avatar_path);
+    }
+
+    public function test_payment_status_accepts_md5(): void
+    {
+        $payment = Payment::create([
+            'md5' => 'abc123md5',
+            'qr_code' => 'dummy-qr',
+            'amount' => 10,
+            'currency' => 'USD',
+            'status' => 'PENDING',
+            'expires_at' => now()->subMinute(),
+            'check_attempts' => 0,
+        ]);
+
+        $response = $this->postJson('/api/payment/status', [
+            'md5' => $payment->md5,
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('payment.id', $payment->id)
+            ->assertJsonPath('payment.md5', $payment->md5);
+    }
+
+    public function test_payment_status_requires_payment_identifier(): void
+    {
+        $response = $this->postJson('/api/payment/status', []);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_successful_payment_status_creates_donation_record_from_metadata(): void
+    {
+        $category = Category::create(['category_name' => 'Health']);
+        $organization = Organization::create([
+            'name' => 'Health Org',
+            'email' => 'health@example.com',
+            'password' => bcrypt('password123'),
+            'category_id' => $category->id,
+            'verified_status' => 'verified',
+        ]);
+
+        $role = Role::create(['role_name' => 'Donor']);
+        $user = User::create([
+            'name' => 'Donor',
+            'email' => 'donor@example.com',
+            'password' => bcrypt('password123'),
+            'status' => 'active',
+            'role_id' => $role->id,
+        ]);
+
+        $payment = Payment::create([
+            'user_id' => $user->id,
+            'md5' => 'success-md5',
+            'qr_code' => 'dummy-qr',
+            'amount' => 15,
+            'currency' => 'USD',
+            'status' => 'SUCCESS',
+            'transaction_reference' => json_encode([
+                'source' => 'qr_checkout',
+                'user_id' => $user->id,
+                'organization_id' => $organization->id,
+                'donation_type' => 'money',
+            ]),
+            'expires_at' => now()->addMinutes(5),
+            'check_attempts' => 0,
+        ]);
+
+        $response = $this->postJson('/api/payment/status', [
+            'md5' => $payment->md5,
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('donations', [
+            'user_id' => $user->id,
+            'organization_id' => $organization->id,
+            'amount' => '15.00',
+            'donation_type' => 'money',
+            'status' => 'completed',
+        ]);
     }
 
     private function fakePngUpload(): \Illuminate\Http\UploadedFile

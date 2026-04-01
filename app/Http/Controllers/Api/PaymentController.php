@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Campaign;
+use App\Models\Donation;
+use App\Models\DonationStatusHistory;
 use App\Models\Payment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,7 +32,7 @@ class PaymentController extends Controller
     private function syncPaymentStatus(Payment $payment): Payment
     {
         if ($payment->status === 'SUCCESS') {
-            return $payment;
+            return $this->ensureDonationRecorded($payment);
         }
 
         if ($payment->isExpired()) {
@@ -56,6 +59,7 @@ class PaymentController extends Controller
                 null;
 
             $payment->markAsSuccess($result, $transactionId);
+            $payment = $this->ensureDonationRecorded($payment->fresh());
 
             // Send notifications to organization and admin roles (not donor)
             $updatedPayment = $payment->fresh();
@@ -121,6 +125,8 @@ class PaymentController extends Controller
             'amount' => 'required|numeric|min:' . self::MIN_USD_AMOUNT,
             'currency' => 'in:USD,KHR',
             'user_id' => 'nullable|integer|exists:users,id',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'campaign_id' => 'nullable|integer|exists:campaigns,id',
             'bill_number' => 'nullable|string',
             'mobile_number' => 'nullable|string',
             'store_label' => 'nullable|string',
@@ -155,6 +161,18 @@ class PaymentController extends Controller
                 'method_name' => 'Bakong KHQR',
             ]);
 
+            $campaign = !empty($validated['campaign_id'])
+                ? Campaign::query()->find($validated['campaign_id'])
+                : null;
+            $organizationId = $validated['organization_id'] ?? $campaign?->organization_id;
+            $transactionReference = json_encode(array_filter([
+                'source' => 'qr_checkout',
+                'user_id' => $validated['user_id'] ?? null,
+                'organization_id' => $organizationId,
+                'campaign_id' => $validated['campaign_id'] ?? null,
+                'donation_type' => 'money',
+            ], fn ($value) => $value !== null));
+
             // Older databases may not yet have all payment linkage columns.
             $paymentData = [
                 'user_id' => $validated['user_id'] ?? null,
@@ -179,7 +197,7 @@ class PaymentController extends Controller
             }
 
             if (Schema::hasColumn('payments', 'transaction_reference')) {
-                $paymentData['transaction_reference'] = $validated['bill_number'] ?? null;
+                $paymentData['transaction_reference'] = $transactionReference;
             }
 
             if (Schema::hasColumn('payments', 'payment_status')) {
@@ -278,11 +296,26 @@ class PaymentController extends Controller
     public function getPaymentStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'payment_id' => 'required|integer|exists:payments,id',
+            'payment_id' => 'nullable|integer|exists:payments,id',
+            'md5' => 'nullable|string|exists:payments,md5',
             'user_id' => 'nullable|integer|exists:users,id',
         ]);
 
-        $payment = Payment::findOrFail($validated['payment_id']);
+        if (!isset($validated['payment_id']) && !isset($validated['md5'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Either payment_id or md5 is required.',
+                'errors' => [
+                    'payment_id' => ['Either payment_id or md5 is required.'],
+                    'md5' => ['Either payment_id or md5 is required.'],
+                ],
+            ], 422);
+        }
+
+        $payment = isset($validated['payment_id'])
+            ? Payment::findOrFail($validated['payment_id'])
+            : Payment::where('md5', $validated['md5'])->firstOrFail();
+
         $payment = $this->syncPaymentStatus($payment);
         $payment = $this->attachUserIfMissing($payment, $validated['user_id'] ?? null);
 
@@ -356,6 +389,90 @@ class PaymentController extends Controller
         $payment->update(['user_id' => $userId]);
 
         return $payment->fresh();
+    }
+
+    private function ensureDonationRecorded(Payment $payment): Payment
+    {
+        if ($payment->status !== 'SUCCESS') {
+            return $payment;
+        }
+
+        if ($payment->donation_id) {
+            return $payment;
+        }
+
+        $context = $this->resolveDonationContext($payment);
+        $userId = $payment->user_id ?: ($context['user_id'] ?? null);
+        $organizationId = $context['organization_id'] ?? null;
+        $campaignId = $context['campaign_id'] ?? null;
+
+        if (!$userId || !$organizationId) {
+            return $payment;
+        }
+
+        $existingDonation = Donation::query()
+            ->where('user_id', $userId)
+            ->where('organization_id', $organizationId)
+            ->where('campaign_id', $campaignId)
+            ->where('amount', $payment->amount)
+            ->where(function ($query) use ($payment) {
+                $query->where('created_at', '>=', $payment->created_at?->copy()->subMinutes(10))
+                    ->orWhere('id', $payment->donation_id);
+            })
+            ->latest('id')
+            ->first();
+
+        $donation = $existingDonation ?: Donation::create([
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'campaign_id' => $campaignId,
+            'amount' => $payment->amount,
+            'donation_type' => 'money',
+            'status' => 'completed',
+        ]);
+
+        if (!$existingDonation) {
+            DonationStatusHistory::create([
+                'donation_id' => $donation->id,
+                'old_status' => 'created',
+                'new_status' => 'completed',
+            ]);
+        }
+
+        $updates = ['donation_id' => $donation->id];
+
+        if (Schema::hasColumn('payments', 'payment_status')) {
+            $updates['payment_status'] = 'completed';
+        }
+
+        $payment->update($updates);
+
+        return $payment->fresh();
+    }
+
+    private function resolveDonationContext(Payment $payment): array
+    {
+        $context = [];
+
+        if (is_string($payment->transaction_reference) && $payment->transaction_reference !== '') {
+            $decoded = json_decode($payment->transaction_reference, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $context = $decoded;
+            }
+        }
+
+        if (!isset($context['campaign_id']) && preg_match('/^DON-(\d+)-/i', (string) $payment->bill_number, $matches) === 1) {
+            $context['campaign_id'] = (int) $matches[1];
+        }
+
+        if (!isset($context['organization_id']) && !empty($context['campaign_id'])) {
+            $campaign = Campaign::query()->find((int) $context['campaign_id']);
+            if ($campaign) {
+                $context['organization_id'] = (int) $campaign->organization_id;
+            }
+        }
+
+        return $context;
     }
 
 
