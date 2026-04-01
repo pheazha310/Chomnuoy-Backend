@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use App\Services\KHQRService;
 use Illuminate\Support\Facades\Log;
 use App\Models\Notification;
+use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Models\Role;
 
@@ -149,7 +150,11 @@ class PaymentController extends Controller
                 ], 500);
             }
 
-            // Save payment to database
+            $paymentMethod = PaymentMethod::query()->firstOrCreate([
+                'method_name' => 'Bakong KHQR',
+            ]);
+
+            // Save only the fields that actually exist on the payments table.
             $payment = Payment::create([
                 'user_id' => $validated['user_id'] ?? null,
                 'md5' => $result['data']['md5'],
@@ -161,6 +166,7 @@ class PaymentController extends Controller
                 'store_label' => $validated['store_label'] ?? null,
                 'terminal_label' => $validated['terminal_label'] ?? null,
                 'merchant_name' => config('services.bakong.merchant.name'),
+                'status' => 'PENDING',
                 'expires_at' => now()->addMinutes(self::PAYMENT_EXPIRY_MINUTES),
             ]);
 
