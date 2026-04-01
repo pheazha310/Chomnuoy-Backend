@@ -13,6 +13,125 @@ use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
 {
+    private const SUCCESSFUL_PAYMENT_STATUSES = ['completed', 'success', 'confirmed', 'paid'];
+    private const USD_TO_KHR_RATE = 4100;
+
+    private function successfulDonationAmountSubquery()
+    {
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
+
+        return DB::table('donations')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN donation_type = 'money' AND LOWER(status) IN ({$statusList}) THEN amount
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereColumn('campaign_id', 'campaigns.id');
+    }
+
+    private function successfulTransactionAmountSubquery()
+    {
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
+        $rate = self::USD_TO_KHR_RATE;
+
+        return DB::table('transactions')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN LOWER(status) IN ({$statusList}) THEN
+                            CASE
+                                WHEN UPPER(currency) = 'KHR' THEN amount / {$rate}
+                                ELSE amount
+                            END
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereNull('donation_id')
+            ->whereColumn('campaign_id', 'campaigns.id');
+    }
+
+    private function successfulDirectPaymentAmountSubquery()
+    {
+        $rate = self::USD_TO_KHR_RATE;
+
+        return DB::table('payments')
+            ->selectRaw("
+                COALESCE(SUM(
+                    CASE
+                        WHEN status = 'SUCCESS' THEN
+                            CASE
+                                WHEN UPPER(currency) = 'KHR' THEN amount / {$rate}
+                                ELSE amount
+                            END
+                        ELSE 0
+                    END
+                ), 0)
+            ")
+            ->whereRaw("bill_number LIKE CONCAT('DON-', campaigns.id, '-%')");
+    }
+
+    private function successfulSupporterCountExpression(): string
+    {
+        $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
+
+        return "
+            (
+                SELECT COUNT(DISTINCT supporter_rows.user_id)
+                FROM (
+                    SELECT donations.user_id
+                    FROM donations
+                    WHERE donations.campaign_id = campaigns.id
+                      AND donations.donation_type = 'money'
+                      AND LOWER(donations.status) IN ({$statusList})
+
+                    UNION
+
+                    SELECT transactions.user_id
+                    FROM transactions
+                    WHERE transactions.campaign_id = campaigns.id
+                      AND transactions.donation_id IS NULL
+                      AND LOWER(transactions.status) IN ({$statusList})
+
+                    UNION
+
+                    SELECT payments.id as user_id
+                    FROM payments
+                    WHERE payments.status = 'SUCCESS'
+                      AND payments.bill_number LIKE CONCAT('DON-', campaigns.id, '-%')
+                ) AS supporter_rows
+            )
+        ";
+    }
+
+    private function withCampaignLiveTotals($query)
+    {
+        return $query
+            ->addSelect([
+                'successful_donation_amount' => $this->successfulDonationAmountSubquery(),
+                'successful_transaction_amount' => $this->successfulTransactionAmountSubquery(),
+                'successful_direct_payment_amount' => $this->successfulDirectPaymentAmountSubquery(),
+            ])
+            ->selectRaw(
+                '('
+                . $this->successfulDonationAmountSubquery()->toSql()
+                . ') + ('
+                . $this->successfulTransactionAmountSubquery()->toSql()
+                . ') + ('
+                . $this->successfulDirectPaymentAmountSubquery()->toSql()
+                . ') as live_current_amount',
+                array_merge(
+                    $this->successfulDonationAmountSubquery()->getBindings(),
+                    $this->successfulTransactionAmountSubquery()->getBindings(),
+                    $this->successfulDirectPaymentAmountSubquery()->getBindings(),
+                )
+            )
+            ->selectRaw($this->successfulSupporterCountExpression() . ' as live_supporter_count');
+    }
+
     private function preparePayload(Request $request): array
     {
         $columns = Schema::getColumnListing('campaigns');
@@ -39,8 +158,9 @@ class CampaignController extends Controller
 
     public function index(): JsonResponse
     {
-        $records = Campaign::query()
-            ->select('campaigns.*')
+        $records = $this->withCampaignLiveTotals(
+            Campaign::query()->select('campaigns.*')
+        )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')
@@ -63,8 +183,9 @@ class CampaignController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $record = Campaign::query()
-            ->select('campaigns.*')
+        $record = $this->withCampaignLiveTotals(
+            Campaign::query()->select('campaigns.*')
+        )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
                     ->whereColumn('campaign_id', 'campaigns.id')

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AbaPayWayController;
+use App\Http\Controllers\Api\AdminProfileController;
 use App\Http\Controllers\Api\AuthControllerRegister;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\CampaignImageController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Api\OrganizationHistoryController;
 use App\Http\Controllers\Api\OrganizationVerificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\RoleController;
@@ -32,6 +34,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/auth/register', [AuthControllerRegister::class, 'register']);
 Route::post('/auth/login', [AuthControllerRegister::class, 'login']);
 Route::post('/auth/change-password', [AuthControllerRegister::class, 'changePassword']);
+Route::get('/auth/providers/status', [SocialAuthController::class, 'status']);
 Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect']);
 Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback']);
 Route::get('/health', function (): JsonResponse {
@@ -64,9 +67,29 @@ Route::apiResource('reviews', ReviewController::class);
 Route::get('notifications/stream', [NotificationController::class, 'stream']);
 Route::apiResource('notifications', NotificationController::class);
 Route::apiResource('audit_logs', AuditLogController::class);
+Route::get('report/admin-dashboard', [ReportController::class, 'adminDashboard']);
 Route::apiResource('report', ReportController::class);
-Route::apiResource('campaigns', CampaignController::class);
+Route::get('profile/me', [ProfileController::class, 'me']);
+Route::post('profile/me', [ProfileController::class, 'updateMe']);
+Route::get('profile/{user}', [ProfileController::class, 'show']);
+Route::post('profile/{user}', [ProfileController::class, 'update']);
+Route::post('profile/{user}/password', [ProfileController::class, 'updatePassword']);
+Route::post('profile/{user}/avatar', [ProfileController::class, 'uploadAvatar']);
+Route::post('profile/{user}/activities', [ProfileController::class, 'addActivity']);
+Route::delete('profile/{user}/activities/{activityId}', [ProfileController::class, 'deleteActivity']);
+Route::get('admin/profile/{user}', [AdminProfileController::class, 'show']);
+Route::post('admin/profile/{user}', [AdminProfileController::class, 'update']);
+Route::post('admin/profile/{user}/password', [AdminProfileController::class, 'updatePassword']);
+Route::apiResource('campaigns', CampaignController::class); 
 Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donations']);
 Route::get('campaigns/{campaign}/velocity', [CampaignController::class, 'velocity']);
 Route::apiResource('campaign_image', CampaignImageController::class);
 Route::apiResource('campaign_update', CampaignUpdateController::class);
+
+
+Route::post('/payment/generate', [PaymentController::class, 'generateQR']);
+Route::post('/payment/check', [PaymentController::class, 'checkPayment']);
+Route::post('/payment/status', [PaymentController::class, 'getPaymentStatus']);
+Route::post('/payment/verify', [PaymentController::class, 'verifyQR']);
+Route::post('/payment/decode', [PaymentController::class, 'decodeQR']);
+Route::post('/payment/deep-link', [PaymentController::class, 'generateDeepLink']);

@@ -12,7 +12,21 @@ class NotificationController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(Notification::query()->orderByDesc('id')->get());
+        $query = Notification::query()->orderByDesc('id');
+
+        if (request()->filled('user_id')) {
+            $query->where('user_id', (int) request()->query('user_id'));
+        }
+
+        if (request()->filled('recipient_type')) {
+            $query->where('recipient_type', request()->query('recipient_type'));
+        }
+
+        if (request()->filled('recipient_id')) {
+            $query->where('recipient_id', (int) request()->query('recipient_id'));
+        }
+
+        return response()->json($query->get());
     }
 
     public function store(Request $request): JsonResponse
@@ -48,11 +62,13 @@ class NotificationController extends Controller
     public function stream(Request $request): StreamedResponse
     {
         $userId = (int) $request->query('user_id', 0);
+        $recipientType = trim((string) $request->query('recipient_type', ''));
+        $recipientId = (int) $request->query('recipient_id', 0);
         $lastId = (int) $request->query('last_id', 0);
         $sleepSeconds = max(1, min(10, (int) $request->query('sleep', 2)));
         $maxSeconds = max(10, min(120, (int) $request->query('max_seconds', 55)));
 
-        return response()->stream(function () use ($userId, $lastId, $sleepSeconds, $maxSeconds) {
+        return response()->stream(function () use ($userId, $recipientType, $recipientId, $lastId, $sleepSeconds, $maxSeconds) {
             @set_time_limit(0);
             $lastSent = $lastId;
             $startedAt = time();
@@ -68,6 +84,12 @@ class NotificationController extends Controller
                 }
                 if ($userId > 0) {
                     $query->where('user_id', $userId);
+                }
+                if ($recipientType !== '') {
+                    $query->where('recipient_type', $recipientType);
+                }
+                if ($recipientId > 0) {
+                    $query->where('recipient_id', $recipientId);
                 }
 
                 $records = $query->limit(50)->get();
