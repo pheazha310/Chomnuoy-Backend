@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 class Organization extends Model
 {
@@ -40,6 +39,9 @@ class Organization extends Model
             return null;
         }
 
-        return asset(Storage::url($this->avatar_path));
+        $segments = array_map('rawurlencode', explode('/', trim($this->avatar_path, '/')));
+        $baseUrl = rtrim((string) config('app.url'), '/');
+
+        return $baseUrl . '/api/files/' . implode('/', $segments);
     }
 }

@@ -30,6 +30,8 @@ class User extends Authenticatable
         }
 
         $segments = array_map('rawurlencode', explode('/', trim($this->avatar_path, '/')));
-        return url('/api/files/' . implode('/', $segments));
+        $baseUrl = rtrim((string) config('app.url'), '/');
+
+        return $baseUrl . '/api/files/' . implode('/', $segments);
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Services\KHQRService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 
 class PaymentController extends Controller
 {
@@ -73,6 +74,17 @@ class PaymentController extends Controller
         $type = $validated['type'] ?? 'individual';
 
         try {
+            if (blank(config('services.bakong.merchant.bakong_id'))) {
+                Log::error('Bakong merchant configuration is missing', [
+                    'config_key' => 'services.bakong.merchant.bakong_id',
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bakong merchant configuration is missing.',
+                ], 500);
+            }
+
             $result = $type === 'merchant'
                 ? $this->khqrService->generateMerchantQR($validated)
                 : $this->khqrService->generateIndividualQR($validated);
@@ -93,37 +105,50 @@ class PaymentController extends Controller
                 ], 500);
             }
 
-            // Generate a unique md5 value for each payment
-            $md5 = md5(uniqid());
+            $md5 = (string) ($result['data']['md5'] ?? md5((string) $result['data']['qr']));
+            $payment = null;
+            $paymentPersistenceError = null;
+            $expiresAt = now()->addMinutes(1);
 
-            // Save payment to database
-            $payment = Payment::create([
-                'md5' => $md5,
-                'qr_code' => $result['data']['qr'],
-                'amount' => $validated['amount'],
-                'currency' => $validated['currency'] ?? 'USD',
-                'bill_number' => $validated['bill_number'] ?? null,
-                'mobile_number' => $validated['mobile_number'] ?? null,
-                'store_label' => $validated['store_label'] ?? null,
-                'terminal_label' => $validated['terminal_label'] ?? null,
-                'merchant_name' => config('services.bakong.merchant.name'),
-                'expires_at' => now()->addMinutes(1), // 1 minute expiry
-            ]);
+            try {
+                $payment = Payment::create([
+                    'md5' => $md5,
+                    'qr_code' => $result['data']['qr'],
+                    'amount' => $validated['amount'],
+                    'currency' => $validated['currency'] ?? 'USD',
+                    'bill_number' => $validated['bill_number'] ?? null,
+                    'mobile_number' => $validated['mobile_number'] ?? null,
+                    'store_label' => $validated['store_label'] ?? null,
+                    'terminal_label' => $validated['terminal_label'] ?? null,
+                    'merchant_name' => config('services.bakong.merchant.name'),
+                    'expires_at' => $expiresAt,
+                ]);
 
-            Log::info('Payment created', [
-                'payment_id' => $payment->id,
-                'md5' => $md5,
-                'amount' => $payment->amount,
-                'currency' => $payment->currency
-            ]);
+                Log::info('Payment created', [
+                    'payment_id' => $payment->id,
+                    'md5' => $md5,
+                    'amount' => $payment->amount,
+                    'currency' => $payment->currency,
+                ]);
+            } catch (QueryException $e) {
+                $paymentPersistenceError = $e->getMessage();
+
+                Log::error('Payment persistence failed after QR generation', [
+                    'message' => $e->getMessage(),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
                 'qr_code' => $result['data']['qr'],
                 'md5' => $md5,
-                'payment_id' => $payment->id,
-                'expires_at' => $payment->expires_at->toISOString(),
-                'message' => 'QR generated successfully',
+                'payment_id' => $payment?->id,
+                'expires_at' => ($payment?->expires_at ?? $expiresAt)->toISOString(),
+                'payment_persisted' => $payment !== null,
+                'message' => $payment === null
+                    ? 'QR generated successfully, but payment persistence failed.'
+                    : 'QR generated successfully',
+                'warning' => $paymentPersistenceError ? 'Payment persistence failed on the server.' : null,
             ]);
         } catch (\Exception $e) {
             Log::error('Exception in generateQR', [

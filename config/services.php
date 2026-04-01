@@ -70,8 +70,15 @@ return [
     ],
 
     'bakong' => [
+        'api_url' => env('BAKONG_API_URL', 'https://api-bakong.nbc.gov.kh'),
         'token' => env('BAKONG_TOKEN'),
         'currency' => env('BAKONG_CURRENCY', 'USD'),
+        'merchant' => [
+            'bakong_id' => env('MERCHANT_BAKONG_ID'),
+            'name' => env('MERCHANT_NAME', env('APP_NAME', 'Chomnuoy System')),
+            'city' => env('MERCHANT_CITY', 'PHNOM PENH'),
+            'acquiring_bank' => env('MERCHANT_ACQUIRING_BANK'),
+        ],
         'static_qr_image' => env('BAKONG_STATIC_QR_IMAGE', env('ABA_STATIC_QR_IMAGE')),
         'static_qr_string' => env('BAKONG_STATIC_QR_STRING', env('ABA_STATIC_QR_STRING')),
         'static_qr_deeplink' => env('BAKONG_STATIC_QR_DEEPLINK', env('ABA_STATIC_QR_DEEPLINK')),

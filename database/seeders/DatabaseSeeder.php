@@ -46,6 +46,8 @@ class DatabaseSeeder extends Seeder
         Category::firstOrCreate(['category_name' => 'Hospital']);
         Category::firstOrCreate(['category_name' => 'school']);
 
+        $this->call(OrganizationSeeder::class);
+
         $this->call(AdminSettingsSeeder::class);
         $this->call(DonationTrendSeeder::class);
     }
