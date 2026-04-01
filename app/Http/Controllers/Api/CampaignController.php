@@ -15,6 +15,17 @@ class CampaignController extends Controller
 {
     private const SUCCESSFUL_PAYMENT_STATUSES = ['completed', 'success', 'confirmed', 'paid'];
     private const USD_TO_KHR_RATE = 4100;
+    private const PUBLIC_CAMPAIGN_STATUSES = ['active', 'published', 'ongoing', 'open'];
+
+    private function paymentBillNumberMatchExpression(): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        return match ($driver) {
+            'sqlite', 'pgsql' => "('DON-' || campaigns.id || '-%')",
+            default => "CONCAT('DON-', campaigns.id, '-%')",
+        };
+    }
 
     private function successfulDonationAmountSubquery()
     {
@@ -57,6 +68,7 @@ class CampaignController extends Controller
     private function successfulDirectPaymentAmountSubquery()
     {
         $rate = self::USD_TO_KHR_RATE;
+        $pattern = $this->paymentBillNumberMatchExpression();
 
         return DB::table('payments')
             ->selectRaw("
@@ -71,12 +83,13 @@ class CampaignController extends Controller
                     END
                 ), 0)
             ")
-            ->whereRaw("bill_number LIKE CONCAT('DON-', campaigns.id, '-%')");
+            ->whereRaw("bill_number LIKE {$pattern}");
     }
 
     private function successfulSupporterCountExpression(): string
     {
         $statusList = "'" . implode("','", self::SUCCESSFUL_PAYMENT_STATUSES) . "'";
+        $pattern = $this->paymentBillNumberMatchExpression();
 
         return "
             (
@@ -101,7 +114,7 @@ class CampaignController extends Controller
                     SELECT payments.id as user_id
                     FROM payments
                     WHERE payments.status = 'SUCCESS'
-                      AND payments.bill_number LIKE CONCAT('DON-', campaigns.id, '-%')
+                      AND payments.bill_number LIKE {$pattern}
                 ) AS supporter_rows
             )
         ";
@@ -153,13 +166,51 @@ class CampaignController extends Controller
             $payload['enable_recurring'] = filter_var($payload['enable_recurring'], FILTER_VALIDATE_BOOLEAN);
         }
 
+        if (array_key_exists('status', $payload)) {
+            $payload['status'] = $this->normalizeCampaignStatus($payload['status']);
+        } elseif (in_array('status', $columns, true)) {
+            $payload['status'] = 'active';
+        }
+
         return $payload;
+    }
+
+    private function normalizeCampaignStatus(mixed $status): string
+    {
+        $value = strtolower(trim((string) $status));
+
+        if ($value === '' || $value === 'draft') {
+            return 'active';
+        }
+
+        if (in_array($value, self::PUBLIC_CAMPAIGN_STATUSES, true)) {
+            return 'active';
+        }
+
+        return $value;
+    }
+
+    private function withPublicStatus($query)
+    {
+        if (!Schema::hasColumn('campaigns', 'status')) {
+            return $query->selectRaw("'active' as status");
+        }
+
+        return $query->selectRaw("
+            CASE
+                WHEN campaigns.status IS NULL OR TRIM(campaigns.status) = '' THEN 'active'
+                WHEN LOWER(campaigns.status) IN ('draft', 'published', 'ongoing', 'open') THEN 'active'
+                ELSE LOWER(campaigns.status)
+            END as public_status
+        ");
     }
 
     public function index(): JsonResponse
     {
-        $records = $this->withCampaignLiveTotals(
-            Campaign::query()->select('campaigns.*')
+        $records = $this->withPublicStatus(
+            $this->withCampaignLiveTotals(
+                Campaign::query()->select('campaigns.*')
+            )
         )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
@@ -168,6 +219,11 @@ class CampaignController extends Controller
             ])
             ->orderByDesc('campaigns.id')
             ->get();
+
+        $records->transform(function ($campaign) {
+            $campaign->status = $campaign->public_status ?? $this->normalizeCampaignStatus($campaign->status ?? null);
+            return $campaign;
+        });
         // $records = Campaign::all();
 
         return response()->json($records);
@@ -183,8 +239,10 @@ class CampaignController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $record = $this->withCampaignLiveTotals(
-            Campaign::query()->select('campaigns.*')
+        $record = $this->withPublicStatus(
+            $this->withCampaignLiveTotals(
+                Campaign::query()->select('campaigns.*')
+            )
         )
             ->addSelect([
                 'image_path' => CampaignImage::select('image_path')
@@ -192,6 +250,8 @@ class CampaignController extends Controller
                     ->limit(1),
             ])
             ->findOrFail($id);
+
+        $record->status = $record->public_status ?? $this->normalizeCampaignStatus($record->status ?? null);
 
         return response()->json($record);
     }

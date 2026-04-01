@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Role;
 use App\Models\Organization;
 use App\Models\Payment;
+use App\Models\Campaign;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -213,6 +214,34 @@ class ProfileApiTest extends TestCase
             'donation_type' => 'money',
             'status' => 'completed',
         ]);
+    }
+
+    public function test_campaigns_default_to_active_and_expose_public_status(): void
+    {
+        $category = Category::create(['category_name' => 'Education']);
+        $organization = Organization::create([
+            'name' => 'School Org',
+            'email' => 'school@example.com',
+            'password' => bcrypt('password123'),
+            'category_id' => $category->id,
+            'verified_status' => 'verified',
+        ]);
+
+        Campaign::create([
+            'organization_id' => $organization->id,
+            'title' => 'Books for Students',
+            'description' => 'Help students with books',
+            'goal_amount' => 1000,
+            'current_amount' => 0,
+        ]);
+
+        $response = $this->getJson('/api/campaigns');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('0.title', 'Books for Students')
+            ->assertJsonPath('0.status', 'active')
+            ->assertJsonPath('0.public_status', 'active');
     }
 
     private function fakePngUpload(): \Illuminate\Http\UploadedFile
