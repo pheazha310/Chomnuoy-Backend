@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\UserCredentialController;
 use App\Http\Controllers\Api\UserHistoryController;
 use App\Http\Controllers\Api\UserRoleController;
 use Illuminate\Http\JsonResponse;
+use App\Models\Organization;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthControllerRegister::class, 'register']);
@@ -42,6 +43,18 @@ Route::get('/health', function (): JsonResponse {
     return response()->json([
         'status' => 'ok',
         'service' => 'chomnuoy-backend',
+    ]);
+});
+
+Route::get('/', function (): JsonResponse {
+    $organizations = Organization::query()->orderByDesc('id')->get();
+
+    return response()->json([
+        'status' => 'ok',
+        'service' => 'chomnuoy-backend',
+        'organizations_count' => $organizations->count(),
+        'organizations_url' => url('/api/organizations'),
+        'organizations' => $organizations,
     ]);
 });
 
@@ -70,8 +83,10 @@ Route::apiResource('notifications', NotificationController::class);
 Route::apiResource('audit_logs', AuditLogController::class);
 Route::get('report/admin-dashboard', [ReportController::class, 'adminDashboard']);
 Route::apiResource('report', ReportController::class);
-Route::get('profile/me', [ProfileController::class, 'me']);
-Route::post('profile/me', [ProfileController::class, 'updateMe']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('profile/me', [ProfileController::class, 'me']);
+    Route::post('profile/me', [ProfileController::class, 'updateMe']);
+});
 Route::get('profile/{user}', [ProfileController::class, 'show']);
 Route::post('profile/{user}', [ProfileController::class, 'update']);
 Route::post('profile/{user}/password', [ProfileController::class, 'updatePassword']);

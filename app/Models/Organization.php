@@ -35,6 +35,12 @@ class Organization extends Model
             return null;
         }
 
-        return asset(Storage::url($this->avatar_path));
+        $url = Storage::disk('public')->url($this->avatar_path);
+
+        if (str_starts_with((string) config('app.url'), 'https://') && str_starts_with($url, 'http://')) {
+            return preg_replace('/^http:\/\//i', 'https://', $url, 1) ?? $url;
+        }
+
+        return $url;
     }
 }

@@ -121,6 +121,8 @@ class SocialAuthController extends Controller
                     'avatar_url' => $socialUser->getAvatar(),
                     'verified_status' => $organization->verified_status,
                 ],
+                'token' => null,
+                'token_type' => null,
             ];
         }
 
@@ -144,6 +146,7 @@ class SocialAuthController extends Controller
             $user->password = Hash::make('password');
         }
         $user->save();
+        $token = $user->createToken('frontend')->plainTextToken;
 
         return [
             'message' => 'Login successful',
@@ -153,8 +156,11 @@ class SocialAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'avatar' => $socialUser->getAvatar(),
+                'avatar_url' => $user->avatar_url ?? $socialUser->getAvatar(),
             ],
             'organization' => null,
+            'token' => $token,
+            'token_type' => 'Bearer',
         ];
     }
 

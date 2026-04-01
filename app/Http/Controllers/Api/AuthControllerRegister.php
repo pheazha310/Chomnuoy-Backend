@@ -206,6 +206,7 @@ class AuthControllerRegister extends Controller
                 ->value('role_name') ?? 'Donor';
             $user->last_seen_at = now();
             $user->save();
+            $token = $user->createToken('frontend')->plainTextToken;
             Log::info('Auth login success', [
                 'email' => $email,
                 'account_type' => $roleName,
@@ -215,6 +216,8 @@ class AuthControllerRegister extends Controller
                 'account_type' => $roleName,
                 'user' => $user,
                 'organization' => null,
+                'token' => $token,
+                'token_type' => 'Bearer',
             ]);
         }
 
@@ -264,6 +267,8 @@ class AuthControllerRegister extends Controller
                 'account_type' => 'Organization',
                 'user' => null,
                 'organization' => $organization,
+                'token' => null,
+                'token_type' => null,
             ]);
         }
 
