@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProfileApiTest extends TestCase
@@ -77,5 +78,71 @@ class ProfileApiTest extends TestCase
             ->assertJsonPath('service', 'chomnuoy-backend')
             ->assertJsonPath('organizations_count', 1)
             ->assertJsonPath('organizations.0.name', 'Partner Org');
+    }
+
+    public function test_admin_profile_update_accepts_avatar_only_payload(): void
+    {
+        Storage::fake('public');
+
+        $role = Role::create(['role_name' => 'Admin']);
+        $user = User::create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => bcrypt('password123'),
+            'status' => 'active',
+            'role_id' => $role->id,
+        ]);
+
+        $response = $this->post('/api/admin/profile/'.$user->id, [
+            'avatar' => $this->fakePngUpload(),
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('basic_information.id', $user->id);
+
+        $this->assertNotNull($user->fresh()->avatar_path);
+        Storage::disk('public')->assertExists($user->fresh()->avatar_path);
+    }
+
+    public function test_admin_avatar_dedicated_endpoint_uploads_image(): void
+    {
+        Storage::fake('public');
+
+        $role = Role::create(['role_name' => 'Admin']);
+        $user = User::create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => bcrypt('password123'),
+            'status' => 'active',
+            'role_id' => $role->id,
+        ]);
+
+        $response = $this->post('/api/admin/profile/'.$user->id.'/avatar', [
+            'avatar' => $this->fakePngUpload(),
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonStructure(['message', 'avatar_url', 'avatar_path']);
+
+        $this->assertNotNull($user->fresh()->avatar_path);
+        Storage::disk('public')->assertExists($user->fresh()->avatar_path);
+    }
+
+    private function fakePngUpload(): \Illuminate\Http\UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'png');
+        file_put_contents($path, base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0fQAAAAASUVORK5CYII='
+        ));
+
+        return new \Illuminate\Http\UploadedFile(
+            $path,
+            'avatar.png',
+            'image/png',
+            null,
+            true
+        );
     }
 }

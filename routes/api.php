@@ -95,6 +95,7 @@ Route::post('profile/{user}/activities', [ProfileController::class, 'addActivity
 Route::delete('profile/{user}/activities/{activityId}', [ProfileController::class, 'deleteActivity']);
 Route::get('admin/profile/{user}', [AdminProfileController::class, 'show']);
 Route::post('admin/profile/{user}', [AdminProfileController::class, 'update']);
+Route::post('admin/profile/{user}/avatar', [AdminProfileController::class, 'uploadAvatar']);
 Route::post('admin/profile/{user}/password', [AdminProfileController::class, 'updatePassword']);
 Route::apiResource('campaigns', CampaignController::class);
 Route::get('campaigns/{campaign}/donations', [CampaignController::class, 'donations']);

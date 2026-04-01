@@ -65,10 +65,24 @@ class AdminProfileController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
+        $hasAvatarOnlyPayload = $request->hasFile('avatar')
+            && !$request->hasAny([
+                'name',
+                'title',
+                'email',
+                'phone',
+                'bio',
+                'location',
+                'website',
+                'linkedin_url',
+                'skills',
+                'two_factor_enabled',
+            ]);
+
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [$hasAvatarOnlyPayload ? 'sometimes' : 'required', 'string', 'max:255'],
             'title' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'email' => [$hasAvatarOnlyPayload ? 'sometimes' : 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:30'],
             'bio' => ['nullable', 'string', 'max:5000'],
             'location' => ['nullable', 'string', 'max:255'],
@@ -134,6 +148,33 @@ class AdminProfileController extends Controller
         );
 
         return $this->show($user->fresh());
+    }
+
+    public function uploadAvatar(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        if ($user->avatar_path) {
+            Storage::disk('public')->delete($user->avatar_path);
+        }
+
+        $path = $request->file('avatar')->store('avatars', 'public');
+        $user->update(['avatar_path' => $path]);
+
+        $this->recordAuditLog(
+            $user->id,
+            $request,
+            'Updated admin avatar',
+            'users',
+        );
+
+        return response()->json([
+            'message' => 'Avatar uploaded successfully.',
+            'avatar_url' => $user->fresh()->avatar_url,
+            'avatar_path' => $user->fresh()->avatar_path,
+        ]);
     }
 
     public function updatePassword(Request $request, User $user): JsonResponse
