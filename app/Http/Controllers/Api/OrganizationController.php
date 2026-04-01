@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -26,6 +28,10 @@ class OrganizationController extends Controller
         }
 
         $organization = Organization::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if (!$organization) {
+            $organization = $this->resolveFallbackOrganization($request, $email);
+        }
+
         if (!$organization) {
             return response()->json(null);
         }
@@ -89,5 +95,50 @@ class OrganizationController extends Controller
         $record->delete();
 
         return response()->json(null, 204);
+    }
+
+    private function resolveFallbackOrganization(Request $request, string $email): ?Organization
+    {
+        $organizationId = $request->query('organization_id');
+        if (is_numeric($organizationId)) {
+            return Organization::query()->find((int) $organizationId);
+        }
+
+        $requestedName = trim((string) ($request->query('organization_name') ?? $request->query('name') ?? ''));
+        if ($requestedName !== '') {
+            return $this->findUniqueOrganizationByName($requestedName);
+        }
+
+        $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if (!$user || !$this->userCanResolveOrganization($user)) {
+            return null;
+        }
+
+        $userName = trim((string) $user->name);
+
+        return $userName === ''
+            ? null
+            : $this->findUniqueOrganizationByName($userName);
+    }
+
+    private function findUniqueOrganizationByName(string $name): ?Organization
+    {
+        $matches = Organization::query()
+            ->whereRaw('LOWER(name) = ?', [strtolower(trim($name))])
+            ->limit(2)
+            ->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    private function userCanResolveOrganization(User $user): bool
+    {
+        if (!$user->role_id) {
+            return false;
+        }
+
+        $roleName = strtolower((string) Role::query()->whereKey($user->role_id)->value('role_name'));
+
+        return in_array($roleName, ['organization', 'admin', 'super admin'], true);
     }
 }
