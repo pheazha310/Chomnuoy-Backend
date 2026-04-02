@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class CampaignController extends Controller
 {
@@ -205,6 +206,29 @@ class CampaignController extends Controller
         ");
     }
 
+    private function resolveImageUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        if (str_starts_with($path, 'uploads/')) {
+            return url($path);
+        }
+
+        $url = Storage::disk('public')->url($path);
+
+        if (str_starts_with((string) config('app.url'), 'https://') && str_starts_with($url, 'http://')) {
+            return preg_replace('/^http:\/\//i', 'https://', $url, 1) ?? $url;
+        }
+
+        return $url;
+    }
+
     public function index(): JsonResponse
     {
         $records = $this->withPublicStatus(
@@ -222,6 +246,7 @@ class CampaignController extends Controller
 
         $records->transform(function ($campaign) {
             $campaign->status = $campaign->public_status ?? $this->normalizeCampaignStatus($campaign->status ?? null);
+            $campaign->image_url = $this->resolveImageUrl($campaign->image_path);
             return $campaign;
         });
 
@@ -251,6 +276,7 @@ class CampaignController extends Controller
             ->findOrFail($id);
 
         $record->status = $record->public_status ?? $this->normalizeCampaignStatus($record->status ?? null);
+        $record->image_url = $this->resolveImageUrl($record->image_path);
 
         return response()->json($record);
     }

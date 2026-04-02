@@ -49,6 +49,8 @@ set -e\n\
 echo "Clearing Laravel caches..."\n\
 php artisan optimize:clear\n\
 php artisan config:clear\n\
+echo "Ensuring storage symlink exists..."\n\
+php artisan storage:link || true\n\
 if [ "$RUN_FRESH_MIGRATION" = "true" ]; then\n\
   echo "Running fresh migration with seed..."\n\
   php artisan migrate:fresh --seed --force\n\
