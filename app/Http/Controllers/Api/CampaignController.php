@@ -5,6 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\CampaignImage;
+use App\Models\Notification;
+use App\Models\Organization;
+use App\Models\Role;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -257,6 +261,7 @@ class CampaignController extends Controller
     {
         $payload = $this->preparePayload($request);
         $record = Campaign::create($payload);
+        $this->notifyDonorsOfNewCampaign($record);
 
         return response()->json($record, 201);
     }
@@ -284,8 +289,14 @@ class CampaignController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $record = Campaign::findOrFail($id);
+        $previousStatus = $this->normalizeCampaignStatus($record->status ?? null);
         $payload = $this->preparePayload($request);
         $record->update($payload);
+
+        $currentStatus = $this->normalizeCampaignStatus($record->fresh()->status ?? null);
+        if ($previousStatus !== 'active' && $currentStatus === 'active') {
+            $this->notifyDonorsOfNewCampaign($record->fresh());
+        }
 
         return response()->json($record);
     }
@@ -358,5 +369,55 @@ class CampaignController extends Controller
             'days' => $days,
             'series' => $series,
         ]);
+    }
+
+    private function notifyDonorsOfNewCampaign(Campaign $campaign): void
+    {
+        if ($this->normalizeCampaignStatus($campaign->status ?? null) !== 'active') {
+            return;
+        }
+
+        $organization = Organization::query()->find($campaign->organization_id);
+        $donorRoleIds = Role::query()
+            ->whereIn('role_name', ['Donor', 'donor'])
+            ->pluck('id');
+
+        if ($donorRoleIds->isEmpty()) {
+            return;
+        }
+
+        $donors = User::query()
+            ->whereIn('role_id', $donorRoleIds)
+            ->get();
+
+        foreach ($donors as $donor) {
+            $alreadyExists = Notification::query()
+                ->where('user_id', $donor->id)
+                ->where('type', 'campaign-posted')
+                ->where('recipient_type', 'donor')
+                ->where('recipient_id', $donor->id)
+                ->where('message', 'like', '%' . $campaign->title . '%')
+                ->exists();
+
+            if ($alreadyExists) {
+                continue;
+            }
+
+            Notification::create([
+                'user_id' => $donor->id,
+                'recipient_type' => 'donor',
+                'recipient_id' => $donor->id,
+                'sender_type' => 'organization',
+                'sender_name' => $organization?->name ?: 'Organization',
+                'sender_email' => $organization?->email,
+                'message' => sprintf(
+                    'New campaign posted: %s by %s.',
+                    $campaign->title,
+                    $organization?->name ?: 'an organization'
+                ),
+                'type' => 'campaign-posted',
+                'is_read' => false,
+            ]);
+        }
     }
 }
