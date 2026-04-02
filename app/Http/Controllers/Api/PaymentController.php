@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
 
 class PaymentController extends Controller
 {
-    private const PAYMENT_EXPIRY_MINUTES = 5;
+    private const PAYMENT_EXPIRY_MINUTES = 15;
     private const MIN_USD_AMOUNT = 0.001;
 
     protected KHQRService $khqrService;
@@ -59,11 +59,34 @@ class PaymentController extends Controller
         $responseCode = $result['responseCode'] ?? -1;
         $isSuccess = $responseCode === 0;
 
+        if (isset($result['error'])) {
+            Log::warning('Payment sync error', [
+                'payment_id' => $payment->id,
+                'md5' => $payment->md5,
+                'error' => $result['error'],
+                'bakong_response' => $result,
+            ]);
+        } elseif (!$isSuccess) {
+            Log::info('Payment remains pending after Bakong check', [
+                'payment_id' => $payment->id,
+                'md5' => $payment->md5,
+                'response_code' => $responseCode,
+                'bakong_response' => $result,
+            ]);
+        }
+
         if ($isSuccess) {
             $txInfo = $this->khqrService->getPayment($payment->md5);
             $transactionId = $txInfo['data']['hash'] ??
                 $result['data']['hash'] ??
                 null;
+
+            Log::info('Payment marked successful', [
+                'payment_id' => $payment->id,
+                'md5' => $payment->md5,
+                'transaction_id' => $transactionId,
+                'transaction_lookup' => $txInfo,
+            ]);
 
             $payment->markAsSuccess($result, $transactionId);
             $payment = $this->ensureDonationRecorded($payment->fresh());
@@ -397,6 +420,13 @@ class PaymentController extends Controller
         $campaignId = $context['campaign_id'] ?? null;
 
         if (!$userId || !$organizationId) {
+            Log::warning('Successful payment missing donation context', [
+                'payment_id' => $payment->id,
+                'user_id' => $payment->user_id,
+                'resolved_context' => $context,
+                'transaction_reference' => $payment->transaction_reference,
+                'bill_number' => $payment->bill_number,
+            ]);
             return $payment;
         }
 
@@ -436,6 +466,15 @@ class PaymentController extends Controller
         }
 
         $payment->update($updates);
+
+        Log::info('Donation recorded from successful payment', [
+            'payment_id' => $payment->id,
+            'donation_id' => $donation->id,
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'campaign_id' => $campaignId,
+            'amount' => $payment->amount,
+        ]);
 
         return $payment->fresh();
     }
